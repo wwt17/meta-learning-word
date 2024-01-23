@@ -438,6 +438,10 @@ if __name__ == "__main__":
         print(f"#uses distribution: total={sum(word_use_n_data.values())}")
         dist = np.bincount(list(word_use_n_data.values())) # type: ignore
         print(dist)
+        sns.displot(list(word_use_n_data.values()), discrete=True)
+        title = f"word uses {split} split distribution"
+        plt.title(title)
+        plt.savefig(f"{title}.png")
 
     # save word use dataset
     word_use_data_path = args.word_use_data_dir / args.dataset / args.build_word_use_data_mode
