@@ -302,7 +302,7 @@ if __name__ == "__main__":
             plt.xticks(rotation=270, fontsize=5)
             ax.set_xlabel("Word")
             ax.set_ylabel("Frequency")
-            fig.savefig("word_frequency.pdf")
+            fig.savefig("word_frequency.pdf", transparent=True)
 
             m = 100
             freq_counts = np.bincount(freqs)
@@ -314,14 +314,14 @@ if __name__ == "__main__":
             ax.set_ylim(ymin=0, ymax=len(vocab))
             ax.set_xlabel("Frequency")
             ax.set_ylabel("#words")
-            fig.savefig("word_frequency_cumulative.pdf")
+            fig.savefig("word_frequency_cumulative.pdf", transparent=True)
 
     pos_tag_df = pd.concat(pos_tag_dfs)
     extend_pos(pos_tag_df)
     if args.plot_pos:
         for pos_field, figsize in {'POS tag': (20, 10), 'syntactic category': (6, 5)}.items():
             g = sns.catplot(kind='count', data=pos_tag_df, x='split', hue=pos_field, palette=palette, height=figsize[1], aspect=figsize[0]/figsize[1])
-            plt.savefig(f"{pos_field} distribution.pdf")
+            plt.savefig(f"{pos_field} distribution.pdf", transparent=True)
 
     max_freq_pos_vocab = {}
     for split in ["train"]:
@@ -378,7 +378,7 @@ if __name__ == "__main__":
             ax.set_xlabel("sentence length")
             ax.set_xlim(xmin=0)
             ax.set_title(split)
-        fig.savefig("length_distribution.pdf")
+        fig.savefig("length_distribution.pdf", transparent=True)
 
     # build dataset of word uses
     print("Build dataset of word uses:")
@@ -438,10 +438,10 @@ if __name__ == "__main__":
         print(f"#uses distribution: total={sum(word_use_n_data.values())}")
         dist = np.bincount(list(word_use_n_data.values())) # type: ignore
         print(dist)
-        sns.displot(list(word_use_n_data.values()), discrete=True)
+        sns.displot(list(word_use_n_data.values()), discrete=True, binrange=(0, 50))
         title = f"word uses {split} split distribution"
         plt.title(title)
-        plt.savefig(f"{title}.png")
+        plt.savefig(f"{title}.png", transparent=True)
 
     # save word use dataset
     word_use_data_path = args.word_use_data_dir / args.dataset / args.build_word_use_data_mode
