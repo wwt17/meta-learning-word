@@ -20,14 +20,7 @@ import seaborn as sns
 from utils import frac_repr
 from pos_tags import extend_pos
 from plotting import palette
-
-
-PAD_TOKEN = "<pad>"
-UNK_TOKEN = "<unk>"
-SEP_TOKEN = "<sep>"
-NEW_TOKEN = "[new-token]"
-SPECIAL_TOKENS = [PAD_TOKEN, UNK_TOKEN, SEP_TOKEN]
-NEW_TOKENS = [NEW_TOKEN]
+from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 
 
 nlp = spacy.load("en_core_web_sm", exclude=["parser", "attribute_ruler", "lemmatizer", "ner"])
