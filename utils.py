@@ -13,13 +13,13 @@ def frac_repr(a, b, prec=2):
     return f"{a}/{b}={a/b:.{prec}%}"
 
 
-def paired(g, n=2):
-    g = iter(g)
+def batchify(examples, batch_size=2, drop_last=True):
+    examples = iter(examples)
     while True:
-        p = tuple(islice(g, n))
-        if len(p) < n:
+        batch = tuple(islice(examples, batch_size))
+        if len(batch) == 0 or (drop_last and len(batch) < batch_size):
             break
-        yield p
+        yield batch
 
 
 def _pickle_load(path):
