@@ -4,15 +4,7 @@ from itertools import islice, chain
 import random
 import json
 from transformers import set_seed
-
-
-def paired(g, n=2):
-    g = iter(g)
-    while True:
-        p = tuple(islice(g, n))
-        if len(p) < n:
-            break
-        yield p
+from utils import paired
 
 
 if __name__ == "__main__":

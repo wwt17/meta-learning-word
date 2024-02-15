@@ -1,3 +1,6 @@
-__pycache__
-word_use_data
-vocab
+__pycache__/
+/dataset_cache/
+/word_use_data/
+/vocab/
+/*.pdf
+/*.png

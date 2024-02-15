@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import torch
 import spacy
 import seaborn as sns
-from utils import frac_repr
+from utils import frac_repr, cache, get_pos_tags, replace_at_offsets
 from pos_tags import extend_pos
 from plotting import palette
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
@@ -93,15 +93,6 @@ def build_vocab(
     return vocab
 
 
-def replaced_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> str:
-    """Replace s at offsets by t.
-    """
-    offsets = sorted(offsets)
-    for offset in reversed(offsets):
-        s = s[:offset[0]] + t + s[offset[1]:]
-    return s
-
-
 def build_word_use_data(
         data: datasets.Dataset,
         used_vocab: Mapping[str, tuple[str, Any]],
@@ -118,11 +109,8 @@ def build_word_use_data(
                     potential_word_offsets.append((word, offset))
             if potential_word_offsets:
                 used_word, _ = random.choice(potential_word_offsets)
-                replaced_sentence = replaced_at_offsets(
-                    sentence,
-                    [offset for word, offset in potential_word_offsets if word == used_word],
-                    NEW_TOKEN)
-                word_use_data[used_word].append(replaced_sentence)
+                offsets = [offset for word, offset in potential_word_offsets if word == used_word]
+                word_use_data[used_word].append({"sentence": sentence, "offsets": offsets})
 
     elif mode == "word":
         remaining_vocab = defaultdict(list)
@@ -170,8 +158,7 @@ def build_word_use_data(
             for (word, offset), pos in zip(word_offsets, sentence_pos_tags):
                 if word == word_ and pos == used_vocab[word][0]:
                     offsets.append(offset)
-            replaced_sentence = replaced_at_offsets(sentence, offsets, NEW_TOKEN)
-            word_use_data[word_].append(replaced_sentence)
+            word_use_data[word_].append({"sentence": sentence, "offsets": offsets})
 
     else:
         raise Exception(f"Unknown build_word_use_data mode {mode}")
@@ -182,12 +169,16 @@ def build_word_use_data(
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        "--dataset", default="ptb_text_only",
-        help="Dataset name on Hugging Face Hub."
+        "--dataset", default="/misc/vlgscratch4/LakeGroup/shared_data/CHILDES/shared_corpora/childes",
+        help="Dataset name on Hugging Face Hub, or path to the dataset."
     )
     argparser.add_argument(
         "--print_original_use_samples", action="store_true",
         help="Print samples of words in the vocabulary with their uses."
+    )
+    argparser.add_argument(
+        "--plot_format", default="pdf",
+        help="file format of the plots (e.g., pdf, png)."
     )
     argparser.add_argument(
         "--plot_word_frequency", action="store_true",
@@ -236,7 +227,13 @@ if __name__ == "__main__":
     if args.seed is not None:
         set_seed(args.seed)
 
+    if Path(args.dataset).exists():
+        dataset_cache_path = Path(args.dataset)
+    else:
+        dataset_cache_path = Path('dataset_cache', args.dataset)
     dataset: datasets.DatasetDict = datasets.load_dataset(args.dataset)  # type: ignore
+    if "text" in dataset["train"].features:
+        dataset = dataset.rename_column("text", "sentence")
 
     pre_tokenizer = tokenizers.pre_tokenizers.WhitespaceSplit()  # type: ignore
 
@@ -250,10 +247,7 @@ if __name__ == "__main__":
         print(f"{split} split:")
         sentences = data_split["sentence"]
 
-        pos_tags = []
-        for doc in nlp.pipe(tqdm.tqdm(sentences, desc="POS tagging")):
-            sentence_pos_tags = [token.tag_ for token in doc]
-            pos_tags.append(sentence_pos_tags)
+        pos_tags = cache(dataset_cache_path/f'{split}.pos_tags.pkl')(get_pos_tags)(sentences, nlp)
         data_split = data_split.add_column("pos_tags", pos_tags)
         dataset[split] = data_split
         pos_tag_df = pd.DataFrame(list(chain.from_iterable(pos_tags)), columns=['pos'])
@@ -295,7 +289,7 @@ if __name__ == "__main__":
             plt.xticks(rotation=270, fontsize=5)
             ax.set_xlabel("Word")
             ax.set_ylabel("Frequency")
-            fig.savefig("word_frequency.pdf", transparent=True)
+            fig.savefig(f"word_frequency.{args.plot_format}", transparent=True)
 
             m = 100
             freq_counts = np.bincount(freqs)
@@ -307,14 +301,14 @@ if __name__ == "__main__":
             ax.set_ylim(ymin=0, ymax=len(vocab))
             ax.set_xlabel("Frequency")
             ax.set_ylabel("#words")
-            fig.savefig("word_frequency_cumulative.pdf", transparent=True)
+            fig.savefig(f"word_frequency_cumulative.{args.plot_format}", transparent=True)
 
     pos_tag_df = pd.concat(pos_tag_dfs)
     extend_pos(pos_tag_df)
     if args.plot_pos:
         for pos_field, figsize in {'POS tag': (20, 10), 'syntactic category': (6, 5)}.items():
             g = sns.catplot(kind='count', data=pos_tag_df, x='split', hue=pos_field, palette=palette, height=figsize[1], aspect=figsize[0]/figsize[1])
-            plt.savefig(f"{pos_field} distribution.pdf", transparent=True)
+            plt.savefig(f"{pos_field} distribution.{args.plot_format}", transparent=True)
 
     max_freq_pos_vocab = {}
     for split in ["train"]:
@@ -371,7 +365,7 @@ if __name__ == "__main__":
             ax.set_xlabel("sentence length")
             ax.set_xlim(xmin=0)
             ax.set_title(split)
-        fig.savefig("length_distribution.pdf", transparent=True)
+        fig.savefig(f"length_distribution.{args.plot_format}", transparent=True)
 
     # build dataset of word uses
     print("Build dataset of word uses:")
