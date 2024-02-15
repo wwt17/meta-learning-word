@@ -169,7 +169,7 @@ def build_word_use_data(
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        "--dataset", default="/misc/vlgscratch4/LakeGroup/shared_data/CHILDES/shared_corpora/childes",
+        "--dataset", default="childes",
         help="Dataset name on Hugging Face Hub, or path to the dataset."
     )
     argparser.add_argument(
@@ -289,7 +289,7 @@ if __name__ == "__main__":
             plt.xticks(rotation=270, fontsize=5)
             ax.set_xlabel("Word")
             ax.set_ylabel("Frequency")
-            fig.savefig(f"word_frequency.{args.plot_format}", transparent=True)
+            fig.savefig(dataset_cache_path/f"word_frequency.{args.plot_format}", transparent=True) # type: ignore
 
             m = 100
             freq_counts = np.bincount(freqs)
@@ -301,14 +301,14 @@ if __name__ == "__main__":
             ax.set_ylim(ymin=0, ymax=len(vocab))
             ax.set_xlabel("Frequency")
             ax.set_ylabel("#words")
-            fig.savefig(f"word_frequency_cumulative.{args.plot_format}", transparent=True)
+            fig.savefig(dataset_cache_path/f"word_frequency_cumulative.{args.plot_format}", transparent=True) # type: ignore
 
     pos_tag_df = pd.concat(pos_tag_dfs)
     extend_pos(pos_tag_df)
     if args.plot_pos:
         for pos_field, figsize in {'POS tag': (20, 10), 'syntactic category': (6, 5)}.items():
             g = sns.catplot(kind='count', data=pos_tag_df, x='split', hue=pos_field, palette=palette, height=figsize[1], aspect=figsize[0]/figsize[1])
-            plt.savefig(f"{pos_field} distribution.{args.plot_format}", transparent=True)
+            plt.savefig(dataset_cache_path/f"{pos_field} distribution.{args.plot_format}", transparent=True)
 
     max_freq_pos_vocab = {}
     for split in ["train"]:
@@ -365,7 +365,7 @@ if __name__ == "__main__":
             ax.set_xlabel("sentence length")
             ax.set_xlim(xmin=0)
             ax.set_title(split)
-        fig.savefig(f"length_distribution.{args.plot_format}", transparent=True)
+        fig.savefig(dataset_cache_path/f"length_distribution.{args.plot_format}", transparent=True) # type: ignore
 
     # build dataset of word uses
     print("Build dataset of word uses:")
@@ -414,6 +414,9 @@ if __name__ == "__main__":
             data = dict(data)
             word_use_dataset[split] = data
 
+    word_use_data_path = args.word_use_data_dir / args.dataset / args.build_word_use_data_mode
+    word_use_data_path.mkdir(parents=True, exist_ok=True)
+
     print("word use data info:")
     for split, word_use_data in word_use_dataset.items():
         print(f"{split} split:")
@@ -428,11 +431,9 @@ if __name__ == "__main__":
         sns.displot(list(word_use_n_data.values()), discrete=True, binrange=(0, 50))
         title = f"word uses {split} split distribution"
         plt.title(title)
-        plt.savefig(f"{title}.png", transparent=True)
+        plt.savefig(word_use_data_path/f"{title}.png", transparent=True)
 
     # save word use dataset
-    word_use_data_path = args.word_use_data_dir / args.dataset / args.build_word_use_data_mode
-    word_use_data_path.mkdir(parents=True, exist_ok=True)
     for split, word_use_data in word_use_dataset.items():
         save_path = word_use_data_path / f"{split}.json"
         print(f"save word use data {split} split to {save_path}")
