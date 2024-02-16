@@ -1,15 +1,26 @@
+from collections.abc import Iterable, Sequence, Mapping, Sized
 import argparse
 from pathlib import Path
 from itertools import islice, chain
-import random
 import json
-from transformers import set_seed
+import numpy as np
 from text_configs import NEW_TOKEN
 from utils import batchify, replace_at_offsets
 
 
 def example_str(example):
     return replace_at_offsets(example["sentence"], example["offsets"], NEW_TOKEN)
+
+
+def build_eval_test_batches(data: Iterable[tuple[str, list]], n_class: int, n_study_examples: int, rng: np.random.Generator):
+    k = n_study_examples + 1
+    yield from batchify(
+        map(
+            lambda item: (item[0], list(rng.choice(item[1], size=k, replace=False))),
+            filter(lambda item: len(item[1]) >= k, data)
+        ),
+        batch_size=n_class
+    )
 
 
 if __name__ == "__main__":
@@ -33,31 +44,29 @@ if __name__ == "__main__":
     )
     args = argparser.parse_args()
 
-    if args.seed is not None:
-        set_seed(args.seed)
+    np.random.seed(args.seed)
+    rng = np.random.default_rng(seed=args.seed)
 
     with open(args.data, "r") as f:
         data = json.load(f)
 
-    k = args.n_study_examples + 1
-    data = list(filter(lambda item: len(item[1]) >= k, data.items()))
+    data = list(data.items())
 
     n_episodes = 0
     while True:
         try:
-            random.shuffle(data)
-            for word_uses_batch in batchify(data):
+            rng.shuffle(data)
+            for word_examples_batch in build_eval_test_batches(data, args.n_class, args.n_study_examples, rng):
                 n_episodes += 1
                 print(f"Episode #{n_episodes}:")
-                batch_size = len(word_uses_batch)
-                word_examples_batch = tuple(((word, random.sample(uses, k=k)) for word, uses in word_uses_batch))
+                batch_size = len(word_examples_batch)
                 for idx, (word, examples) in enumerate(word_examples_batch):
                     print(f"word #{idx+1}:")
                     for j, example in enumerate(examples[:-1]):
                         sent = example_str(example)
                         print(4*" " + f"example #{j+1}: " + sent)
                 indices = list(range(batch_size))
-                random.shuffle(indices)
+                np.random.shuffle(indices) # type: ignore
                 print("predict:")
                 for i, idx in enumerate(indices):
                     example = word_examples_batch[idx][1][-1]
