@@ -203,6 +203,13 @@ if __name__ == "__main__":
         help="Use words of these used POS tags to build dataset of word uses."
     )
     argparser.add_argument(
+        "--punc_pos", nargs="+",
+        default=[
+            "SYM", ".", ":", "HYPH", "UH"
+        ],
+        help="POS tags for punctuations."
+    )
+    argparser.add_argument(
         "--build_word_use_data_mode", choices=["sentence", "word"],
         default="word"
     )
@@ -213,6 +220,19 @@ if __name__ == "__main__":
              "overlaps between splits are large. "
              "If not set, will merge all original splits, build a single word "
              "use dataset, and then split by words."
+    )
+    argparser.add_argument(
+        "--allow_duplicate_sents", action="store_true",
+        help="Do not deduplicate sentences in the dataset."
+    )
+    argparser.add_argument(
+        "--remove_sents_less_than_n_words", type=int, default=1,
+        help="Remove sentences with less than this number of words (excluding "
+             "punctuations)."
+    )
+    argparser.add_argument(
+        "--split_ratio", type=float, nargs="+",
+        help="Split ratio."
     )
     argparser.add_argument(
         "--word_use_data_dir", type=Path, default=Path("word_use_data"),
@@ -379,7 +399,42 @@ if __name__ == "__main__":
     if not args.build_word_use_data_from_original_splits:
         # merge original splits
         merged_data = datasets.concatenate_datasets(list(dataset.values()))
-        original_dataset = {"merged": merged_data}
+        original_dataset = datasets.DatasetDict({"merged": merged_data})
+
+    if not args.allow_duplicate_sents:
+        # deduplicate sentences
+        print("deduplicating sentences...")
+        sentences_set = set()
+
+        def _is_first_occur(example):
+            sent = example["sentence"]
+            if sent in sentences_set:
+                return False
+            sentences_set.add(sent)
+            return True
+
+        new_original_dataset = {}
+        for split in ["train", "validation", "test", "merged"]:
+            if split in original_dataset.keys():
+                print(f"{split}:")
+                data = original_dataset[split]
+                new_data = data.filter(_is_first_occur)
+                new_original_dataset[split] = new_data
+                print(f"{frac_repr(len(new_data), len(data))} left")
+        new_original_dataset = datasets.DatasetDict(new_original_dataset)
+        original_dataset = new_original_dataset
+
+    if args.remove_sents_less_than_n_words:
+        # remove sentences <= N words (excluding punctuations)
+        print(f"removing sentences <= {args.remove_sents_less_than_n_words} words (excluding punctuations)...")
+        def _more_than_n_words(example):
+            return sum(((pos not in args.punc_pos) for pos in example["pos_tags"])) > args.remove_sents_less_than_n_words
+        new_original_dataset = original_dataset.filter(_more_than_n_words)
+        for split in original_dataset.keys():
+            data = original_dataset[split]
+            new_data = new_original_dataset[split]
+            print(f"{split}: {frac_repr(len(new_data), len(data))} left")
+        original_dataset = new_original_dataset
 
     word_use_dataset = {}
     for split, data in original_dataset.items():
@@ -388,11 +443,18 @@ if __name__ == "__main__":
         word_use_dataset[split] = word_use_data
 
     if not args.build_word_use_data_from_original_splits:
-        # get original split ratio
-        ratio = {
-            split: len(data) / len(merged_data)  # type: ignore
-            for split, data in dataset.items()
-        }
+        if args.split_ratio is None:
+            # get original split ratio
+            ratio = {
+                split: len(data) / len(merged_data)  # type: ignore
+                for split, data in dataset.items()
+            }
+        else:
+            sum_ratio = sum(args.split_ratio)
+            ratio = {
+                split: ratio / sum_ratio
+                for split, ratio in zip(["train", "validation", "test"], args.split_ratio)
+            }
         # split word use data by words
         word_use_data = word_use_dataset["merged"]
         word_use_data = list(word_use_data.items())
