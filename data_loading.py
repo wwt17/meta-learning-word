@@ -4,6 +4,7 @@ from pathlib import Path
 from itertools import islice, chain
 import json
 import numpy as np
+import datasets
 from text_configs import NEW_TOKEN
 from utils import batchify, replace_at_offsets
 
@@ -12,15 +13,17 @@ def example_str(example):
     return replace_at_offsets(example["sentence"], example["offsets"], NEW_TOKEN)
 
 
-def build_eval_test_batches(data: Iterable[tuple[str, list]], n_class: int, n_study_examples: int, rng: np.random.Generator):
-    k = n_study_examples + 1
-    yield from batchify(
-        map(
-            lambda item: (item[0], list(rng.choice(item[1], size=k, replace=False))),
-            filter(lambda item: len(item[1]) >= k, data)
-        ),
-        batch_size=n_class
-    )
+def sample_examples(data: datasets.Dataset, n_examples: int, rng: np.random.Generator):
+    return data.filter(lambda item: len(item["examples"]) >= n_examples).map(
+        lambda item: {"examples": list(rng.choice(item["examples"], size=n_examples, replace=False))})
+
+
+def load_dataset(data_path):
+    with open(data_path, "r") as f:
+        data = json.load(f)
+    data = [{"word": word, "examples": examples} for word, examples in data.items()]
+    data = datasets.Dataset.from_list(data)
+    return data
 
 
 if __name__ == "__main__":
@@ -47,20 +50,18 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
     rng = np.random.default_rng(seed=args.seed)
 
-    with open(args.data, "r") as f:
-        data = json.load(f)
-
-    data = list(data.items())
+    data = load_dataset(args.data)
 
     n_episodes = 0
     while True:
         try:
-            rng.shuffle(data)
-            for word_examples_batch in build_eval_test_batches(data, args.n_class, args.n_study_examples, rng):
+            data = data.shuffle(generator=rng)
+            for word_examples_batch in batchify(sample_examples(data, args.n_study_examples+1, rng), batch_size=args.n_class):
                 n_episodes += 1
                 print(f"Episode #{n_episodes}:")
                 batch_size = len(word_examples_batch)
-                for idx, (word, examples) in enumerate(word_examples_batch):
+                for idx, item in enumerate(word_examples_batch):
+                    word, examples = item["word"], item["examples"]
                     print(f"word #{idx+1}:")
                     for j, example in enumerate(examples[:-1]):
                         sent = example_str(example)
@@ -69,7 +70,7 @@ if __name__ == "__main__":
                 np.random.shuffle(indices) # type: ignore
                 print("predict:")
                 for i, idx in enumerate(indices):
-                    example = word_examples_batch[idx][1][-1]
+                    example = word_examples_batch[idx]["examples"][-1]
                     sent = example_str(example)
                     print(f"{i+1}. " + sent)
 
@@ -86,9 +87,9 @@ if __name__ == "__main__":
 
                 correct = predicted_indices == indices
                 print("Correct!" if correct else "INCORRECT!")
-                print("Words in original order:", ' '.join(word_examples_batch[idx][0] for idx in range(len(word_examples_batch))))
-                print("Correct predicted words:", ' '.join(word_examples_batch[idx][0] for idx in indices))
-                print("   Your predicted words:", ' '.join(word_examples_batch[idx][0] for idx in predicted_indices))
+                print("Words in original order:", ' '.join(word_examples_batch[idx]["word"] for idx in range(len(word_examples_batch))))
+                print("Correct predicted words:", ' '.join(word_examples_batch[idx]["word"] for idx in indices))
+                print("   Your predicted words:", ' '.join(word_examples_batch[idx]["word"] for idx in predicted_indices))
                 #print()
                 input()
 
