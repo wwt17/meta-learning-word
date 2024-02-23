@@ -5,12 +5,7 @@ from itertools import islice, chain
 import json
 import numpy as np
 import datasets
-from text_configs import NEW_TOKEN
-from utils import batchify, replace_at_offsets
-
-
-def example_str(example):
-    return replace_at_offsets(example["sentence"], example["offsets"], NEW_TOKEN)
+from utils import batchify, example_str
 
 
 def sample_examples(data: datasets.Dataset, n_examples: int, rng: np.random.Generator):

@@ -7,6 +7,7 @@ from itertools import islice, chain
 import pickle
 import torch
 import tqdm
+from text_configs import SEP_TOKEN, NEW_TOKEN
 
 
 def frac_repr(a, b, prec=2):
@@ -20,6 +21,32 @@ def batchify(examples, batch_size=2, drop_last=True):
         if len(batch) == 0 or (drop_last and len(batch) < batch_size):
             break
         yield batch
+
+
+def map_structure(func, *structure):
+    if isinstance(structure[0], torch.Tensor):
+        return func(*structure)
+    elif isinstance(structure[0], Sequence):
+        return type(structure[0])(map_structure(func, *substructure) for substructure in zip(*structure))
+    elif isinstance(structure[0], Mapping):
+        return {key: map_structure(func, *(struct[key] for struct in structure)) for key in structure[0].keys()}
+    else:
+        raise ValueError(f"Unknown structure {structure}")
+
+
+def to(data, *args, **kwargs) -> Any:
+    if hasattr(data, "to"):
+        return data.to(*args, **kwargs)
+    elif isinstance(data, Sequence):
+        return type(data)(to(e, *args, **kwargs) for e in data)
+    elif isinstance(data, Mapping):
+        return {key: to(value, *args, **kwargs) for key, value in data.items()}
+    else:
+        raise ValueError(f"Unknown data {data} of type {type(data)}")
+
+
+def get_device(module: torch.nn.Module):
+    return next(module.parameters()).device
 
 
 def _pickle_load(path):
@@ -73,3 +100,11 @@ def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> st
     for offset in reversed(offsets):
         s = s[:offset[0]] + t + s[offset[1]:]
     return s
+
+
+def example_str(example):
+    return replace_at_offsets(example["sentence"], example["offsets"], NEW_TOKEN)
+
+
+def concat_examples(examples, sep_token=SEP_TOKEN):
+    return sep_token+" "+" ".join((example_str(example)+" "+sep_token for example in examples))
