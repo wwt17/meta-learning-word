@@ -10,6 +10,7 @@ import tqdm
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import wandb
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
@@ -83,10 +84,120 @@ def evaluate_lm(model, dataloader, loss_fct) -> float:
     return mean_loss
 
 
+def main(project="meta-learning-word", **kwargs):
+    wandb.init(project=project, **kwargs)
+
+    if wandb.config.seed is not None:
+        set_seed(wandb.config.seed)
+
+    dataset = datasets.DatasetDict({
+        split: load_dataset(Path(wandb.config.data_dir, f"{split}.json"))
+        for split in ["train", "validation", "test"]
+    })
+
+    tokenizer = tokenizer_cache(Path(wandb.config.data_dir, "tokenizer"))(get_tokenizer)((
+        example["sentence"]
+        for examples in dataset["train"]["examples"]
+        for example in examples
+    ))
+
+    collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
+
+    config = AutoConfig.from_pretrained(wandb.config.config)
+    model = AutoModelForCausalLM.from_config(config).to(device)
+
+    loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)
+    optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
+    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=wandb.config.factor, patience=wandb.config.patience)
+
+    step = 0
+    logging_loss, logging_n_tokens = 0., 0
+    val_dataset = sample_examples(dataset["validation"], wandb.config.n_examples, np.random.default_rng(wandb.config.eval_seed))
+    val_lm_dataset = val_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+    val_lm_dataloader = DataLoader(
+        val_lm_dataset, # type: ignore
+        batch_size=wandb.config.eval_batch_size,
+        shuffle=False,
+        drop_last=False,
+        collate_fn=collator,
+    )
+    val_cls_dataset = val_dataset.map(construct_cls_example)
+    val_cls_dataloader = DataLoader(
+        val_cls_dataset, # type: ignore
+        batch_size=wandb.config.eval_n_classes,
+        shuffle=False,
+        drop_last=True,
+        collate_fn=partial(cls_collate_fn, tokenizer),
+    )
+    model.eval()
+    wandb.define_metric("val_loss", summary="min")
+    wandb.define_metric("val_cls_acc", summary="max")
+    val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
+    print(f"{val_loss=:.6f}")
+    wandb.log({"epoch": 0, "val_loss": val_loss}, step=step)
+    val_cls_acc = evaluate_cls(model, val_cls_dataloader, loss_fct)
+    print(f"{val_cls_acc=:.3%}")
+    wandb.log({"val_cls_acc": val_cls_acc}, step=step)
+    best_val_cls_acc = val_cls_acc
+    wandb.log({"lr": wandb.config.lr}, step=step)
+
+    for epoch_i in range(wandb.config.n_epochs):
+        print(f"Epoch {epoch_i}:")
+        train_dataset = sample_examples(dataset["train"], wandb.config.n_examples, np.random.default_rng()).map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+        train_dataloader = DataLoader(
+            train_dataset, # type: ignore
+            batch_size=wandb.config.batch_size,
+            shuffle=True,
+            drop_last=True,
+            collate_fn=collator,
+        )
+
+        total_loss, total_n_tokens = 0., 0
+        model.train()
+        for batch in train_dataloader:
+            batch = to(batch, device)
+            outputs = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+            loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
+            loss.backward()
+            optimizer.step()
+            model.zero_grad()
+            loss_value = loss.item()
+            n_tokens = batch["attention_mask"][..., 1:].sum().item()
+            wandb.log({"train_loss_step": loss_value/n_tokens}, step=step)
+            total_loss += loss_value
+            total_n_tokens += n_tokens
+            logging_loss += loss_value
+            logging_n_tokens += n_tokens
+            step += 1
+            if step % wandb.config.logging_step == 0:
+                logging_mean_loss = logging_loss / logging_n_tokens
+                print(f"{step=} loss={logging_mean_loss:.6f}")
+                wandb.log({"train_loss_mean": logging_mean_loss}, step=step)
+                logging_loss, logging_n_tokens = 0., 0
+        train_loss = total_loss / total_n_tokens
+        print(f"{train_loss=:.6f}")
+        wandb.log({"epoch": epoch_i+1, "train_loss": train_loss}, step=step)
+
+        save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "last"), model, optimizer, scheduler)
+
+        model.eval()
+        val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
+        print(f"{val_loss=:.6f}")
+        wandb.log({"val_loss": val_loss}, step=step)
+        val_cls_acc = evaluate_cls(model, val_cls_dataloader, loss_fct)
+        print(f"{val_cls_acc=:.3%}")
+        wandb.log({"val_cls_acc": val_cls_acc}, step=step)
+        if best_val_cls_acc < val_cls_acc:
+            best_val_cls_acc = val_cls_acc
+            save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "best"), model, optimizer, scheduler)
+        scheduler.step(val_cls_acc)
+        wandb.log({"lr": scheduler._last_lr[0]}, step=step) # type: ignore
+
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        "--expr_name", required=True,
+        "--name", required=True,
         help="Experiment/run name."
     )
     argparser.add_argument(
@@ -143,7 +254,7 @@ if __name__ == "__main__":
         help="Factor by which the learning rate will be reduced."
     )
     argparser.add_argument(
-        "--patience", type=int, default=5,
+        "--patience", type=int, default=2,
         help="Number of epochs with no improvement after which learning rate will be reduced."
     )
     argparser.add_argument(
@@ -160,97 +271,6 @@ if __name__ == "__main__":
     args = argparser.parse_args()
     if args.eval_batch_size is None:
         args.eval_batch_size = args.batch_size
-
-    if args.seed is not None:
-        set_seed(args.seed)
-
-    dataset = datasets.DatasetDict({
-        split: load_dataset(args.data_dir/f"{split}.json")
-        for split in ["train", "validation", "test"]
-    })
-
-    tokenizer = tokenizer_cache(args.data_dir/"tokenizer")(get_tokenizer)((
-        example["sentence"]
-        for examples in dataset["train"]["examples"]
-        for example in examples
-    ))
-
-    collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
-
-    config = AutoConfig.from_pretrained(args.config)
-    model = AutoModelForCausalLM.from_config(config).to(device)
-
-    loss_fct = CrossEntropyLoss(reduction=args.loss_reduction, ignore_index=tokenizer.pad_token_id)
-    optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=args.factor, patience=args.patience)
-
-    global_step = 0
-    logging_loss, logging_n_tokens = 0., 0
-    val_dataset = sample_examples(dataset["validation"], args.n_examples, np.random.default_rng(args.eval_seed))
-    val_lm_dataset = val_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-    val_lm_dataloader = DataLoader(
-        val_lm_dataset, # type: ignore
-        batch_size=args.eval_batch_size,
-        shuffle=False,
-        drop_last=False,
-        collate_fn=collator,
-    )
-    val_cls_dataset = val_dataset.map(construct_cls_example)
-    val_cls_dataloader = DataLoader(
-        val_cls_dataset, # type: ignore
-        batch_size=args.eval_n_classes,
-        shuffle=False,
-        drop_last=True,
-        collate_fn=partial(cls_collate_fn, tokenizer),
-    )
-    model.eval()
-    val_cls_acc = evaluate_cls(model, val_cls_dataloader, loss_fct)
-    print(f"{val_cls_acc=:.3%}")
-    best_val_cls_acc = val_cls_acc
-
-    for epoch_i in range(args.n_epochs):
-        print(f"Epoch {epoch_i}:")
-        train_dataset = sample_examples(dataset["train"], args.n_examples, np.random.default_rng()).map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-        train_dataloader = DataLoader(
-            train_dataset, # type: ignore
-            batch_size=args.batch_size,
-            shuffle=True,
-            drop_last=True,
-            collate_fn=collator,
-        )
-
-        total_loss, total_n_tokens = 0., 0
-        model.train()
-        for batch in train_dataloader:
-            batch = to(batch, device)
-            outputs = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
-            loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
-            loss.backward()
-            optimizer.step()
-            model.zero_grad()
-            loss_value = loss.item()
-            n_tokens = batch["attention_mask"][..., 1:].sum().item()
-            total_loss += loss_value
-            total_n_tokens += n_tokens
-            logging_loss += loss_value
-            logging_n_tokens += n_tokens
-            global_step += 1
-            #TODO: use wandb
-            if global_step % args.logging_step == 0:
-                logging_mean_loss = logging_loss / logging_n_tokens
-                print(f"{global_step=} loss={logging_mean_loss:.6f}")
-                logging_loss, logging_n_tokens = 0., 0
-        train_loss = total_loss / total_n_tokens
-        print(f"{train_loss=:.6f}")
-
-        save_checkpoint(args.ckpt_dir/args.expr_name/"last", model, optimizer, scheduler)
-
-        model.eval()
-        val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
-        print(f"{val_loss=:.6f}")
-        val_cls_acc = evaluate_cls(model, val_cls_dataloader, loss_fct)
-        print(f"{val_cls_acc=:.3%}")
-        if best_val_cls_acc < val_cls_acc:
-            best_val_cls_acc = val_cls_acc
-            save_checkpoint(args.ckpt_dir/args.expr_name/"best", model, optimizer, scheduler)
-        scheduler.step(val_cls_acc)
+    name = args.name
+    del args.name # type: ignore
+    main(config=args, name=name)
