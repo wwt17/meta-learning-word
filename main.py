@@ -107,6 +107,7 @@ def main(project="meta-learning-word", **kwargs):
     model = AutoModelForCausalLM.from_config(config).to(device)
 
     loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)
+    raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
     optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=wandb.config.factor, patience=wandb.config.patience)
 
@@ -135,7 +136,7 @@ def main(project="meta-learning-word", **kwargs):
     val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
     print(f"{val_loss=:.6f}")
     wandb.log({"epoch": 0, "val_loss": val_loss}, step=step)
-    val_cls_acc = evaluate_cls(model, val_cls_dataloader, loss_fct)
+    val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
     print(f"{val_cls_acc=:.3%}")
     wandb.log({"val_cls_acc": val_cls_acc}, step=step)
     best_val_cls_acc = val_cls_acc
@@ -184,7 +185,7 @@ def main(project="meta-learning-word", **kwargs):
         val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
         print(f"{val_loss=:.6f}")
         wandb.log({"val_loss": val_loss}, step=step)
-        val_cls_acc = evaluate_cls(model, val_cls_dataloader, loss_fct)
+        val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
         print(f"{val_cls_acc=:.3%}")
         wandb.log({"val_cls_acc": val_cls_acc}, step=step)
         if best_val_cls_acc < val_cls_acc:

@@ -72,6 +72,15 @@ def get_nll_matrix(prefix_input, suffix_input, model, loss_fct):
 
 
 def evaluate_cls(model, dataloader, loss_fct) -> float:
+    """Evaluate classification.
+    Args:
+        model: the LM to evaluate.
+        dataloader: Classification batches. In each batch, try matching each
+            prefix to each suffix.
+        loss_fct: CrossEntropyLoss with reduction="none".
+    Return:
+        Accuracy.
+    """
     device = get_device(model)
     n_acc, n = 0, 0
     with torch.no_grad():
