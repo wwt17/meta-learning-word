@@ -1,6 +1,7 @@
 __pycache__/
 /wandb/
 /ckpt/
+/script/
 /dataset_cache/
 /word_use_data/
 /vocab/
