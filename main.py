@@ -109,7 +109,7 @@ def main(project="meta-learning-word", **kwargs):
     loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
     optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
-    scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=wandb.config.factor, patience=wandb.config.patience)
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
     step = 0
     logging_loss, logging_n_tokens = 0., 0
@@ -123,23 +123,27 @@ def main(project="meta-learning-word", **kwargs):
         collate_fn=collator,
     )
     val_cls_dataset = val_dataset.map(construct_cls_example)
-    val_cls_dataloader = DataLoader(
-        val_cls_dataset, # type: ignore
-        batch_size=wandb.config.eval_n_classes,
-        shuffle=False,
-        drop_last=True,
-        collate_fn=partial(cls_collate_fn, tokenizer),
-    )
+    val_cls_dataloaders = {
+        n_classes: DataLoader(
+            val_cls_dataset, # type: ignore
+            batch_size=n_classes,
+            shuffle=False,
+            drop_last=True,
+            collate_fn=partial(cls_collate_fn, tokenizer),
+        )
+        for n_classes in wandb.config.eval_n_classes
+    }
     model.eval()
     wandb.define_metric("val_loss", summary="min")
     wandb.define_metric("val_cls_acc", summary="max")
     val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
     print(f"{val_loss=:.6f}")
     wandb.log({"epoch": 0, "val_loss": val_loss}, step=step)
-    val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
-    print(f"{val_cls_acc=:.3%}")
-    wandb.log({"val_cls_acc": val_cls_acc}, step=step)
-    best_val_cls_acc = val_cls_acc
+    best_val_loss = val_loss
+    for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
+        val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
+        print(f"val_cls_{n_classes}_acc={val_cls_acc:.3%}")
+        wandb.log({f"val_cls_{n_classes}_acc": val_cls_acc}, step=step)
     wandb.log({"lr": wandb.config.lr}, step=step)
 
     for epoch_i in range(wandb.config.n_epochs):
@@ -185,13 +189,14 @@ def main(project="meta-learning-word", **kwargs):
         val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
         print(f"{val_loss=:.6f}")
         wandb.log({"val_loss": val_loss}, step=step)
-        val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
-        print(f"{val_cls_acc=:.3%}")
-        wandb.log({"val_cls_acc": val_cls_acc}, step=step)
-        if best_val_cls_acc < val_cls_acc:
-            best_val_cls_acc = val_cls_acc
+        if best_val_loss > val_loss:
+            best_val_loss = val_loss
             save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "best"), model, optimizer, scheduler)
-        scheduler.step(val_cls_acc)
+        for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
+            val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
+            print(f"val_cls_{n_classes}_acc={val_cls_acc:.3%}")
+            wandb.log({f"val_cls_{n_classes}_acc": val_cls_acc}, step=step)
+        scheduler.step(val_loss)
         wandb.log({"lr": scheduler._last_lr[0]}, step=step) # type: ignore
 
 
@@ -235,7 +240,7 @@ if __name__ == "__main__":
         "--n_examples", type=int, default=4,
     )
     argparser.add_argument(
-        "--eval_n_classes", type=int, default=2,
+        "--eval_n_classes", type=int, nargs="+", default=[2],
         help="Number of classes for evaluation classification task."
     )
     argparser.add_argument(
