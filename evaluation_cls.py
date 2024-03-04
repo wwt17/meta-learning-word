@@ -16,7 +16,7 @@ from utils import map_structure, to, get_device, example_str, concat_examples
 
 def construct_cls_example(item, sep_token=SEP_TOKEN):
     return {
-        "prefix": concat_examples(item["examples"][:-1]),
+        "prefix": concat_examples(item["examples"][:-1], sep_token=sep_token),
         "suffix": " "+example_str(item["examples"][-1])+" "+sep_token,
     }
 
