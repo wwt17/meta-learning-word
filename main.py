@@ -135,15 +135,16 @@ def main(project="meta-learning-word", **kwargs):
     }
     model.eval()
     wandb.define_metric("val_loss", summary="min")
-    wandb.define_metric("val_cls_acc", summary="max")
     val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
     print(f"{val_loss=:.6f}")
     wandb.log({"epoch": 0, "val_loss": val_loss}, step=step)
     best_val_loss = val_loss
     for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
+        value_name = f"val_cls_{n_classes}_acc"
+        wandb.define_metric(value_name, summary="max")
         val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
-        print(f"val_cls_{n_classes}_acc={val_cls_acc:.3%}")
-        wandb.log({f"val_cls_{n_classes}_acc": val_cls_acc}, step=step)
+        print(f"{value_name}={val_cls_acc:.3%}")
+        wandb.log({value_name: val_cls_acc}, step=step)
     wandb.log({"lr": wandb.config.lr}, step=step)
 
     for epoch_i in range(wandb.config.n_epochs):
