@@ -56,6 +56,8 @@ def get_tokenizer(sentences: Iterable[str]):
         pad_token=PAD_TOKEN,
         cls_token=SEP_TOKEN,
         sep_token=SEP_TOKEN,
+        bos_token=SEP_TOKEN,
+        eos_token=SEP_TOKEN,
     )
     return tokenizer
 
@@ -103,8 +105,17 @@ def main(project="meta-learning-word", **kwargs):
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
 
-    config = AutoConfig.from_pretrained(wandb.config.config)
+    config = AutoConfig.from_pretrained(
+        wandb.config.config,
+        vocab_size=tokenizer.vocab_size,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
     model = AutoModelForCausalLM.from_config(config).to(device)
+    print("model config:")
+    print(model.config)
+    n_params = sum(map(torch.Tensor.nelement, model.parameters()))
+    print(f"model #parameters: {n_params}")
 
     loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
