@@ -40,6 +40,21 @@ if __name__ == "__main__":
         help="Number of classes for evaluation classification task."
     )
     argparser.add_argument(
+        "--max_new_tokens", type=int, default=20,
+    )
+    argparser.add_argument(
+        "--top_p", type=float, default=0.9,
+    )
+    argparser.add_argument(
+        "--temperature", type=float, default=1.0,
+    )
+    argparser.add_argument(
+        "--num_beams", type=int, default=5,
+    )
+    argparser.add_argument(
+        "--num_return_sequences", type=int, default=5,
+    )
+    argparser.add_argument(
         "--seed", type=int, default=0,
         help="Random seed."
     )
@@ -88,22 +103,23 @@ if __name__ == "__main__":
         print("sample outputs:")
         sample_outputs = model.generate(
             **prefix_input,
-            max_new_tokens=20,
+            max_new_tokens=args.max_new_tokens,
             do_sample=True,
             top_k=0,
-            top_p=0.9,
-            num_return_sequences=5,
+            top_p=args.top_p,
+            temperature=args.temperature,
+            num_return_sequences=args.num_return_sequences,
         )
         for j, output in enumerate(sample_outputs):
             print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
         print("beam search outputs:")
         beam_outputs = model.generate(
             **prefix_input,
-            max_new_tokens=20,
-            num_beams=5,
+            max_new_tokens=args.max_new_tokens,
+            num_beams=args.num_beams,
             no_repeat_ngram_size=2,
             early_stopping=True,
-            num_return_sequences=5,
+            num_return_sequences=args.num_return_sequences,
         )
         for j, output in enumerate(beam_outputs):
             print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
