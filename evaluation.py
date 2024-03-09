@@ -111,6 +111,7 @@ if __name__ == "__main__":
         print("sample outputs:")
         sample_outputs = model.generate(
             **prefix_input,
+            pad_token_id=tokenizer.pad_token_id,
             max_new_tokens=args.max_new_tokens,
             do_sample=True,
             top_k=0,
@@ -123,6 +124,7 @@ if __name__ == "__main__":
         print("beam search outputs:")
         beam_outputs = model.generate(
             **prefix_input,
+            pad_token_id=tokenizer.pad_token_id,
             max_new_tokens=args.max_new_tokens,
             num_beams=args.num_beams,
             no_repeat_ngram_size=2,
