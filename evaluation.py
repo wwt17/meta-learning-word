@@ -36,6 +36,9 @@ if __name__ == "__main__":
         "--n_examples", type=int, default=4,
     )
     argparser.add_argument(
+        "--max_sample_times", type=int, default=1,
+    )
+    argparser.add_argument(
         "--eval_n_classes", type=int, nargs="*", default=[],
         help="Number of classes for evaluation classification task."
     )
@@ -77,7 +80,12 @@ if __name__ == "__main__":
     model.config.eos_token_id = tokenizer.eos_token_id
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
 
-    val_dataset = sample_examples(dataset["validation"], args.n_examples, np.random.default_rng(args.seed))
+    val_dataset = sample_examples(
+        dataset["validation"],
+        args.n_examples,
+        max_sample_times=args.max_sample_times,
+        rng=np.random.default_rng(args.seed),
+    )
     val_cls_dataset = val_dataset.map(construct_cls_example)
     val_cls_dataloaders = {
         n_classes: DataLoader(
