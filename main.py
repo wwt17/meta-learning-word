@@ -124,16 +124,35 @@ def main(project="meta-learning-word", **kwargs):
 
     step = 0
     logging_loss, logging_n_tokens = 0., 0
-    val_dataset = sample_examples(dataset["validation"], wandb.config.n_examples, np.random.default_rng(wandb.config.eval_seed))
-    val_lm_dataset = val_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-    val_lm_dataloader = DataLoader(
-        val_lm_dataset, # type: ignore
+    val_ind_dataset = sample_examples(
+        dataset["validation"],
+        wandb.config.n_examples,
+        max_sample_times=args.max_sample_times,
+        rng=np.random.default_rng(wandb.config.eval_seed)
+    )
+    val_unique_dataset = sample_examples(
+        dataset["validation"],
+        wandb.config.n_examples,
+        max_sample_times=1,  # ensure different words in a classification batch
+        rng=np.random.default_rng(wandb.config.eval_seed)
+    )
+    val_ind_lm_dataset = val_ind_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+    val_ind_lm_dataloader = DataLoader(
+        val_ind_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
         shuffle=False,
         drop_last=False,
         collate_fn=collator,
     )
-    val_cls_dataset = val_dataset.map(construct_cls_example)
+    val_unique_lm_dataset = val_unique_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+    val_unique_lm_dataloader = DataLoader(
+        val_unique_lm_dataset, # type: ignore
+        batch_size=wandb.config.eval_batch_size,
+        shuffle=False,
+        drop_last=False,
+        collate_fn=collator,
+    )
+    val_cls_dataset = val_unique_dataset.map(construct_cls_example)
     val_cls_dataloaders = {
         n_classes: DataLoader(
             val_cls_dataset, # type: ignore
@@ -144,23 +163,52 @@ def main(project="meta-learning-word", **kwargs):
         )
         for n_classes in wandb.config.eval_n_classes
     }
-    model.eval()
-    wandb.define_metric("val_loss", summary="min")
-    val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
-    print(f"{val_loss=:.6f}")
-    wandb.log({"epoch": 0, "val_loss": val_loss}, step=step)
-    best_val_loss = val_loss
-    for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
+    wandb.define_metric("val_ind_lm_loss", summary="min")
+    wandb.define_metric("val_unique_lm_loss", summary="min")
+    for n_classes in val_cls_dataloaders.keys():
         value_name = f"val_cls_{n_classes}_acc"
         wandb.define_metric(value_name, summary="max")
-        val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
-        print(f"{value_name}={val_cls_acc:.3%}")
-        wandb.log({value_name: val_cls_acc}, step=step)
-    wandb.log({"lr": wandb.config.lr}, step=step)
+
+    global best_val_ind_lm_loss
+    best_val_ind_lm_loss = np.inf
+    def _evaluate(epoch: int):
+        global best_val_ind_lm_loss
+        model.eval()
+
+        wandb.log({"epoch": epoch}, step=step)
+
+        val_ind_lm_loss = evaluate_lm(model, val_ind_lm_dataloader, loss_fct)
+        print(f"{val_ind_lm_loss=:.6f}")
+        wandb.log({"val_ind_lm_loss": val_ind_lm_loss}, step=step)
+        if best_val_ind_lm_loss > val_ind_lm_loss:
+            best_val_ind_lm_loss = val_ind_lm_loss
+            save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "best"), model, optimizer, scheduler)
+
+        val_unique_lm_loss = evaluate_lm(model, val_unique_lm_dataloader, loss_fct)
+        print(f"{val_unique_lm_loss=:.6f}")
+        wandb.log({"val_unique_lm_loss": val_unique_lm_loss}, step=step)
+
+        for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
+            value_name = f"val_cls_{n_classes}_acc"
+            val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
+            print(f"{value_name}={val_cls_acc:.3%}")
+            wandb.log({value_name: val_cls_acc}, step=step)
+
+        scheduler.step(val_ind_lm_loss, epoch=epoch)
+        wandb.log({"lr": scheduler._last_lr[0]}, step=step) # type: ignore
+
+    _evaluate(0)
 
     for epoch_i in range(wandb.config.n_epochs):
         print(f"Epoch {epoch_i}:")
-        train_dataset = sample_examples(dataset["train"], wandb.config.n_examples, np.random.default_rng()).map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+        print(f'original train dataset size: #episodes: {len(dataset["train"])} #examples: {sum(map(len, dataset["train"]["examples"]))}')
+        train_dataset = sample_examples(
+            dataset["train"],
+            wandb.config.n_examples,
+            max_sample_times=wandb.config.max_sample_times,
+        )
+        print(f'train dataset size: #episodes: {len(train_dataset)} #examples: {sum(map(len, train_dataset["examples"]))}')
+        train_dataset = train_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
         train_dataloader = DataLoader(
             train_dataset, # type: ignore
             batch_size=wandb.config.batch_size,
@@ -193,23 +241,11 @@ def main(project="meta-learning-word", **kwargs):
                 logging_loss, logging_n_tokens = 0., 0
         train_loss = total_loss / total_n_tokens
         print(f"{train_loss=:.6f}")
-        wandb.log({"epoch": epoch_i+1, "train_loss": train_loss}, step=step)
+        wandb.log({"train_loss": train_loss}, step=step)
 
         save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "last"), model, optimizer, scheduler)
 
-        model.eval()
-        val_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
-        print(f"{val_loss=:.6f}")
-        wandb.log({"val_loss": val_loss}, step=step)
-        if best_val_loss > val_loss:
-            best_val_loss = val_loss
-            save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "best"), model, optimizer, scheduler)
-        for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
-            val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
-            print(f"val_cls_{n_classes}_acc={val_cls_acc:.3%}")
-            wandb.log({f"val_cls_{n_classes}_acc": val_cls_acc}, step=step)
-        scheduler.step(val_loss)
-        wandb.log({"lr": scheduler._last_lr[0]}, step=step) # type: ignore
+        _evaluate(epoch_i+1)
 
 
 if __name__ == "__main__":
@@ -250,6 +286,9 @@ if __name__ == "__main__":
     )
     argparser.add_argument(
         "--n_examples", type=int, default=4,
+    )
+    argparser.add_argument(
+        "--max_sample_times", type=int, default=0,
     )
     argparser.add_argument(
         "--eval_n_classes", type=int, nargs="+", default=[2],

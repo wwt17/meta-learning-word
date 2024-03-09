@@ -1,16 +1,46 @@
+from typing import Optional, Any
 from collections.abc import Iterable, Sequence, Mapping, Sized
 import argparse
 from pathlib import Path
+from collections import defaultdict
 from itertools import islice, chain
 import json
 import numpy as np
 import datasets
-from utils import batchify, example_str
+from utils import zipdict, batchify, example_str
 
 
-def sample_examples(data: datasets.Dataset, n_examples: int, rng: np.random.Generator):
-    return data.filter(lambda item: len(item["examples"]) >= n_examples).map(
-        lambda item: {"examples": list(rng.choice(item["examples"], size=n_examples, replace=False))})
+def sample_examples(
+        data: datasets.Dataset,
+        n_examples: int,
+        max_sample_times: Optional[int] = None,
+        rng: Any = np.random,
+        column_name: str = "examples",
+):
+    """For each word (row) in data, sample at most max_sample_times times, each consist n_examples samples.
+    Args:
+        data: a Dataset containing a column with column_name, which contains list of examples.
+        n_examples: Number of examples in each sample.
+        rng: Random number generator.
+        max_sample_times: Max sample times for each word. If None, sample as many times as allowed.
+        column_name: The column name for sampled examples.
+    """
+    def _get_samples(batch):
+        ret = defaultdict(list)
+        for row in zipdict(batch):
+            examples = row[column_name]
+            sample_times = len(examples) // n_examples
+            if max_sample_times:
+                sample_times = min(sample_times, max_sample_times)
+            sample_examples = rng.choice(examples, size=sample_times*n_examples, replace=False)
+            for i in range(sample_times):
+                for key, value in row.items():
+                    if key != column_name:
+                        ret[key].append(value)
+                ret[column_name].append(list(sample_examples[i*n_examples:(i+1)*n_examples]))
+        return ret
+
+    return data.map(_get_samples, batched=True)
 
 
 def load_dataset(data_path):
@@ -37,6 +67,10 @@ if __name__ == "__main__":
         help="Number of study examples for each new word."
     )
     argparser.add_argument(
+        "--max_sample_times", type=int, default=1,
+        help="Max sample times per word."
+    )
+    argparser.add_argument(
         "--seed", type=int,
         help="Random seed."
     )
@@ -51,7 +85,7 @@ if __name__ == "__main__":
     while True:
         try:
             data = data.shuffle(generator=rng)
-            for word_examples_batch in batchify(sample_examples(data, args.n_study_examples+1, rng), batch_size=args.n_class):
+            for word_examples_batch in batchify(sample_examples(data, args.n_study_examples+1, max_sample_times=args.max_sample_times, rng=rng), batch_size=args.n_class):
                 n_episodes += 1
                 print(f"Episode #{n_episodes}:")
                 batch_size = len(word_examples_batch)

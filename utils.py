@@ -14,6 +14,11 @@ def frac_repr(a, b, prec=2):
     return f"{a}/{b}={a/b:.{prec}%}"
 
 
+def zipdict(d: Mapping):
+    for value_tuple in zip(*d.values()):
+        yield {key: value for key, value in zip(d.keys(), value_tuple)}
+
+
 def batchify(examples, batch_size=2, drop_last=True):
     examples = iter(examples)
     while True:
