@@ -10,14 +10,14 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 import transformers
 from transformers import PreTrainedTokenizerFast, AutoModelForCausalLM, AutoConfig, set_seed
-from text_configs import SEP_TOKEN
+from text_configs import NEW_TOKEN, SEP_TOKEN
 from utils import map_structure, to, get_device, example_str, concat_examples
 
 
-def construct_cls_example(item, sep_token=SEP_TOKEN):
+def construct_cls_example(item, sep=SEP_TOKEN, space=" ", t=NEW_TOKEN, prompt=""):
     return {
-        "prefix": concat_examples(item["examples"][:-1], sep_token=sep_token),
-        "suffix": " "+example_str(item["examples"][-1])+" "+sep_token,
+        "prefix": prompt + concat_examples(item["examples"][:-1], sep=sep, space=space, t=t),
+        "suffix": space + example_str(item["examples"][-1], t=t) + space + sep,
     }
 
 

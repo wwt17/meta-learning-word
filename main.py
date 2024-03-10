@@ -69,8 +69,8 @@ def save_checkpoint(ckpt_path, model, optimizer, scheduler):
     torch.save(scheduler.state_dict(), ckpt_path/"scheduler.pt")
 
 
-def construct_lm_example(item, sep_token=SEP_TOKEN):
-    return {"examples": concat_examples(item["examples"], sep_token=sep_token)}
+def construct_lm_example(item, **kwargs):
+    return {"examples": concat_examples(item["examples"], **kwargs)}
 
 
 def evaluate_lm(model, dataloader, loss_fct) -> float:

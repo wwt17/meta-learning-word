@@ -14,11 +14,11 @@ from torch.utils.data import DataLoader
 import datasets
 import tokenizers
 import transformers
-from transformers import AutoModelForCausalLM, set_seed
+from transformers import AutoTokenizer, PreTrainedTokenizerFast, GPT2TokenizerFast, AutoModelForCausalLM, set_seed
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 from data_loading import load_dataset, sample_examples
 from evaluation_cls import construct_cls_example, cls_collate_fn, evaluate_cls
-from main import device, tokenizer_cache, get_tokenizer
+from main import device
 
 
 if __name__ == "__main__":
@@ -31,6 +31,9 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--pretrained_model",
         help="Pretrained model name or path to resume from."
+    )
+    argparser.add_argument(
+        "--tokenizer",
     )
     argparser.add_argument(
         "--n_examples", type=int, default=4,
@@ -69,16 +72,22 @@ if __name__ == "__main__":
         for split in ["train", "validation", "test"]
     })
 
-    tokenizer = tokenizer_cache(Path(args.data_dir, "tokenizer"))(get_tokenizer)((
-        example["sentence"]
-        for examples in dataset["train"]["examples"]
-        for example in examples
-    ))
+    if args.tokenizer is None:
+        args.tokenizer = Path(args.data_dir, "tokenizer")
+    tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(args.tokenizer) # type: ignore
+
+    if isinstance(tokenizer, GPT2TokenizerFast):
+        fmt_kwargs = dict(sep="\n", space="", t=NEW_TOKEN, prompt="")
+        sep_token_id = 198
+        tokenizer.pad_token = tokenizer.eos_token
+    else:
+        fmt_kwargs = dict(sep=SEP_TOKEN, space=" ", t=NEW_TOKEN, prompt="")
+        sep_token_id = tokenizer.convert_tokens_to_ids(fmt_kwargs["sep"])
 
     model = AutoModelForCausalLM.from_pretrained(args.pretrained_model).to(device)
-    model.config.bos_token_id = tokenizer.bos_token_id
-    model.config.eos_token_id = tokenizer.eos_token_id
-    raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
+    model.config.bos_token_id = sep_token_id #tokenizer.bos_token_id
+    model.config.eos_token_id = sep_token_id #tokenizer.eos_token_id
+    raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
     val_dataset = sample_examples(
         dataset["validation"],
@@ -86,7 +95,7 @@ if __name__ == "__main__":
         max_sample_times=args.max_sample_times,
         rng=np.random.default_rng(args.seed),
     )
-    val_cls_dataset = val_dataset.map(construct_cls_example)
+    val_cls_dataset = val_dataset.map(partial(construct_cls_example, **fmt_kwargs))
     val_cls_dataloaders = {
         n_classes: DataLoader(
             val_cls_dataset, # type: ignore

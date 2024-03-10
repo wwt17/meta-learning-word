@@ -107,9 +107,9 @@ def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> st
     return s
 
 
-def example_str(example):
-    return replace_at_offsets(example["sentence"], example["offsets"], NEW_TOKEN)
+def example_str(example, t: str = NEW_TOKEN) -> str:
+    return replace_at_offsets(example["sentence"], example["offsets"], t)
 
 
-def concat_examples(examples, sep_token=SEP_TOKEN):
-    return sep_token+" "+" ".join((example_str(example)+" "+sep_token for example in examples))
+def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: str = NEW_TOKEN) -> str:
+    return sep + space + space.join((example_str(example, t=t) + space + sep for example in examples))
