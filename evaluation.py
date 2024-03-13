@@ -36,6 +36,10 @@ if __name__ == "__main__":
         "--tokenizer",
     )
     argparser.add_argument(
+        "--no_new_token", action="store_true",
+        help="Do not replace the word with the new token."
+    )
+    argparser.add_argument(
         "--n_examples", type=int, default=4,
     )
     argparser.add_argument(
@@ -76,13 +80,14 @@ if __name__ == "__main__":
         args.tokenizer = Path(args.data_dir, "tokenizer")
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(args.tokenizer) # type: ignore
 
+    fmt_kwargs = dict(t = None if args.no_new_token else NEW_TOKEN)
     if isinstance(tokenizer, GPT2TokenizerFast):
-        fmt_kwargs = dict(sep="\n", space="", t=NEW_TOKEN, prompt="")
+        fmt_kwargs.update(dict(sep="\n", space="", prompt=""))
         sep_token_id = 198
         tokenizer.pad_token = tokenizer.eos_token
     else:
-        fmt_kwargs = dict(sep=SEP_TOKEN, space=" ", t=NEW_TOKEN, prompt="")
-        sep_token_id = tokenizer.convert_tokens_to_ids(fmt_kwargs["sep"])
+        fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" ", prompt=""))
+        sep_token_id = tokenizer.convert_tokens_to_ids(fmt_kwargs["sep"]) # type: ignore
 
     model = AutoModelForCausalLM.from_pretrained(args.pretrained_model).to(device)
     model.config.bos_token_id = sep_token_id #tokenizer.bos_token_id

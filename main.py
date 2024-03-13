@@ -122,6 +122,14 @@ def main(project="meta-learning-word", **kwargs):
     optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
+    _kwargs = dict()
+    _construct_lm_example = construct_lm_example
+    _construct_cls_example = construct_cls_example
+    if wandb.config.no_new_token:
+        _kwargs.update(dict(t=None))
+        _construct_lm_example = partial(_construct_lm_example, **_kwargs)
+        _construct_cls_example = partial(_construct_cls_example, **_kwargs)
+
     step = 0
     logging_loss, logging_n_tokens = 0., 0
     val_ind_dataset = sample_examples(
@@ -136,7 +144,7 @@ def main(project="meta-learning-word", **kwargs):
         max_sample_times=1,  # ensure different words in a classification batch
         rng=np.random.default_rng(wandb.config.eval_seed)
     )
-    val_ind_lm_dataset = val_ind_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+    val_ind_lm_dataset = val_ind_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
     val_ind_lm_dataloader = DataLoader(
         val_ind_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
@@ -144,7 +152,7 @@ def main(project="meta-learning-word", **kwargs):
         drop_last=False,
         collate_fn=collator,
     )
-    val_unique_lm_dataset = val_unique_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+    val_unique_lm_dataset = val_unique_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
     val_unique_lm_dataloader = DataLoader(
         val_unique_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
@@ -152,7 +160,7 @@ def main(project="meta-learning-word", **kwargs):
         drop_last=False,
         collate_fn=collator,
     )
-    val_cls_dataset = val_unique_dataset.map(construct_cls_example)
+    val_cls_dataset = val_unique_dataset.map(_construct_cls_example)
     val_cls_dataloaders = {
         n_classes: DataLoader(
             val_cls_dataset, # type: ignore
@@ -208,7 +216,7 @@ def main(project="meta-learning-word", **kwargs):
             max_sample_times=wandb.config.max_sample_times,
         )
         print(f'train dataset size: #episodes: {len(train_dataset)} #examples: {sum(map(len, train_dataset["examples"]))}')
-        train_dataset = train_dataset.map(construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+        train_dataset = train_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
         train_dataloader = DataLoader(
             train_dataset, # type: ignore
             batch_size=wandb.config.batch_size,
@@ -271,6 +279,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--config", default="gpt2",
         help="pretrained_model_name_or_path for AutoConfig."
+    )
+    argparser.add_argument(
+        "--no_new_token", action="store_true",
+        help="Do not replace the word with the new token."
     )
     argparser.add_argument(
         "--n_epochs", type=int, default=80,

@@ -1,4 +1,4 @@
-from typing import Any, Iterable, TypeVar
+from typing import Any, Optional, Iterable, TypeVar
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -107,9 +107,12 @@ def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> st
     return s
 
 
-def example_str(example, t: str = NEW_TOKEN) -> str:
-    return replace_at_offsets(example["sentence"], example["offsets"], t)
+def example_str(example, t: Optional[str] = NEW_TOKEN) -> str:
+    s = example["sentence"]
+    if t is not None:
+        s = replace_at_offsets(s, example["offsets"], t)
+    return s
 
 
-def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: str = NEW_TOKEN) -> str:
+def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: Optional[str] = NEW_TOKEN) -> str:
     return sep + space + space.join((example_str(example, t=t) + space + sep for example in examples))
