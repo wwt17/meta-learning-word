@@ -114,5 +114,5 @@ def example_str(example, t: Optional[str] = NEW_TOKEN) -> str:
     return s
 
 
-def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: Optional[str] = NEW_TOKEN) -> str:
-    return sep + space + space.join((example_str(example, t=t) + space + sep for example in examples))
+def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: Optional[str] = NEW_TOKEN, start_with_sep=True) -> str:
+    return (sep + space if start_with_sep else "") + space.join((example_str(example, t=t) + space + sep for example in examples))

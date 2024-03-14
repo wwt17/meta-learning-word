@@ -15,16 +15,17 @@ import torch
 from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, default_collate
 import datasets
 import tokenizers
 import transformers
-from transformers import PreTrainedTokenizerFast, DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, set_seed
+from transformers import PreTrainedTokenizerFast, DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, set_seed
 from utils import frac_repr, cache, to, example_str, concat_examples
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 from data_processing import build_vocab
 from data_loading import load_dataset, sample_examples
 from evaluation_cls import construct_cls_example, cls_collate_fn, evaluate_cls
+from concat_lm_dataset import ConcatLMDataset
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,6 +87,15 @@ def evaluate_lm(model, dataloader, loss_fct) -> float:
     return mean_loss
 
 
+def concat_lm_collate(batch):
+    input_ids = default_collate(batch)
+    attention_mask = torch.ones_like(input_ids)
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+    }
+
+
 def main(project="meta-learning-word", **kwargs):
     wandb.init(project=project, **kwargs)
 
@@ -111,6 +121,11 @@ def main(project="meta-learning-word", **kwargs):
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
+    n_ctx_attr = {
+        GPT2Config: "n_ctx",
+    }
+    if wandb.config.context_length is None:
+        wandb.config.context_length = config[n_ctx_attr]
     model = AutoModelForCausalLM.from_config(config).to(device)
     print("model config:")
     print(model.config)
@@ -216,14 +231,34 @@ def main(project="meta-learning-word", **kwargs):
             max_sample_times=wandb.config.max_sample_times,
         )
         print(f'train dataset size: #episodes: {len(train_dataset)} #examples: {sum(map(len, train_dataset["examples"]))}')
-        train_dataset = train_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-        train_dataloader = DataLoader(
-            train_dataset, # type: ignore
-            batch_size=wandb.config.batch_size,
-            shuffle=True,
-            drop_last=True,
-            collate_fn=collator,
-        )
+        if args.concat:
+            print("Concatenate all examples")
+            train_dataset = sample_examples(train_dataset, 1, rng=None)  # flatten examples
+            train_dataset = train_dataset.map(partial(_construct_lm_example, start_with_sep=False))
+            train_dataset = train_dataset.map(lambda batch: tokenizer(batch["examples"]), batched=True)
+            train_dataset = np.fromiter(chain.from_iterable(train_dataset["input_ids"]), int)  # concatenate token ids
+            context_length = wandb.config.context_length
+            train_dataset = ConcatLMDataset(
+                train_dataset,
+                context_length,
+                offset=np.random.randint(context_length),
+            )
+            train_dataloader = DataLoader(
+                train_dataset,
+                batch_size=wandb.config.batch_size,
+                shuffle=True,
+                drop_last=True,
+                collate_fn=concat_lm_collate,
+            )
+        else:
+            train_dataset = train_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
+            train_dataloader = DataLoader(
+                train_dataset, # type: ignore
+                batch_size=wandb.config.batch_size,
+                shuffle=True,
+                drop_last=True,
+                collate_fn=collator,
+            )
 
         total_loss, total_n_tokens = 0., 0
         model.train()
@@ -279,6 +314,14 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--config", default="gpt2",
         help="pretrained_model_name_or_path for AutoConfig."
+    )
+    argparser.add_argument(
+        "--concat", action="store_true",
+        help="Train LM on concatenated text."
+    )
+    argparser.add_argument(
+        "--context_length", type=int,
+        help="Context length used in training LM on concatenated text."
     )
     argparser.add_argument(
         "--no_new_token", action="store_true",

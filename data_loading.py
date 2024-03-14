@@ -21,7 +21,7 @@ def sample_examples(
     Args:
         data: a Dataset containing a column with column_name, which contains list of examples.
         n_examples: Number of examples in each sample.
-        rng: Random number generator.
+        rng: Random number generator. If is None, get the first several samples in the same order.
         max_sample_times: Max sample times for each word. If None, sample as many times as allowed.
         column_name: The column name for sampled examples.
     """
@@ -32,7 +32,12 @@ def sample_examples(
             sample_times = len(examples) // n_examples
             if max_sample_times:
                 sample_times = min(sample_times, max_sample_times)
-            sample_examples = rng.choice(examples, size=sample_times*n_examples, replace=False)
+            sample_size = sample_times * n_examples
+            sample_examples = (
+                examples[:sample_size]
+                if rng is None else
+                rng.choice(examples, size=sample_size, replace=False)
+            )
             for i in range(sample_times):
                 for key, value in row.items():
                     if key != column_name:
