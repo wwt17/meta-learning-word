@@ -123,9 +123,9 @@ def main(project="meta-learning-word", **kwargs):
     )
     n_ctx_attr = {
         GPT2Config: "n_ctx",
-    }
+    }[type(config)]
     if wandb.config.context_length is None:
-        wandb.config.context_length = config[n_ctx_attr]
+        wandb.config.update(dict(context_length=getattr(config, n_ctx_attr)), allow_val_change=True)
     model = AutoModelForCausalLM.from_config(config).to(device)
     print("model config:")
     print(model.config)
