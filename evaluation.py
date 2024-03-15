@@ -117,34 +117,46 @@ if __name__ == "__main__":
         val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
         print(f"{value_name}={val_cls_acc:.3%}")
 
-    for i, item in enumerate(val_cls_dataset):
-        print(f"Example #{i}:")
-        print(f"ground-truth word: {item['word']}") # type: ignore
-        prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
-        print("prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False))
-        print("sample outputs:")
-        sample_outputs = model.generate(
-            **prefix_input,
-            pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=args.max_new_tokens,
-            do_sample=True,
-            top_k=0,
-            top_p=args.top_p,
-            temperature=args.temperature,
-            num_return_sequences=args.num_return_sequences,
-        )
-        for j, output in enumerate(sample_outputs):
-            print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
-        print("beam search outputs:")
-        beam_outputs = model.generate(
-            **prefix_input,
-            pad_token_id=tokenizer.pad_token_id,
-            max_new_tokens=args.max_new_tokens,
-            num_beams=args.num_beams,
-            no_repeat_ngram_size=2,
-            early_stopping=True,
-            num_return_sequences=args.num_return_sequences,
-        )
-        for j, output in enumerate(beam_outputs):
-            print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
-        input()
+    try:
+        for i, item in enumerate(val_cls_dataset):
+            print(f"Example #{i}:")
+            print(f"ground-truth word: {item['word']}") # type: ignore
+            prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
+            print("prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False))
+            print("greedy outputs:")
+            greedy_outputs = model.generate(
+                **prefix_input,
+                pad_token_id=tokenizer.pad_token_id,
+                max_new_tokens=args.max_new_tokens,
+            )
+            for j, output in enumerate(greedy_outputs):
+                print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
+            print("sample outputs:")
+            sample_outputs = model.generate(
+                **prefix_input,
+                pad_token_id=tokenizer.pad_token_id,
+                max_new_tokens=args.max_new_tokens,
+                do_sample=True,
+                top_k=0,
+                top_p=args.top_p,
+                temperature=args.temperature,
+                num_return_sequences=args.num_return_sequences,
+            )
+            for j, output in enumerate(sample_outputs):
+                print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
+            print("beam search outputs:")
+            beam_outputs = model.generate(
+                **prefix_input,
+                pad_token_id=tokenizer.pad_token_id,
+                max_new_tokens=args.max_new_tokens,
+                num_beams=args.num_beams,
+                no_repeat_ngram_size=2,
+                early_stopping=True,
+                num_return_sequences=args.num_return_sequences,
+            )
+            for j, output in enumerate(beam_outputs):
+                print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
+            input()
+
+    except EOFError:
+        pass
