@@ -120,18 +120,38 @@ if __name__ == "__main__":
     try:
         for i, item in enumerate(val_cls_dataset):
             print(f"Example #{i}:")
-            print(f"ground-truth word: {item['word']}") # type: ignore
+            print(f"ground-truth word:", item["word"]) # type: ignore
+            print(f"ground-truth prefix:", item["prefix"]) # type: ignore
             prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
-            print("prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False))
+            print("prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
+            print(f"ground-truth suffix:", item["suffix"]) # type: ignore
+
+            def _print_outputs(
+                    outputs,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                    **kwargs
+            ):
+                for j, output in enumerate(outputs):
+                    print(
+                        f"cont. {j}:",
+                        tokenizer.decode(
+                            output[len(prefix_input.input_ids[0]):],
+                            skip_special_tokens=skip_special_tokens,
+                            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                            **kwargs
+                        )
+                    )
+
             print("greedy outputs:")
             greedy_outputs = model.generate(
                 **prefix_input,
                 pad_token_id=tokenizer.pad_token_id,
                 max_new_tokens=args.max_new_tokens,
             )
-            for j, output in enumerate(greedy_outputs):
-                print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
-            print("sample outputs:")
+            _print_outputs(greedy_outputs)
+
+            print(f"sample with top-p={args.top_p:.2f} outputs:")
             sample_outputs = model.generate(
                 **prefix_input,
                 pad_token_id=tokenizer.pad_token_id,
@@ -142,8 +162,8 @@ if __name__ == "__main__":
                 temperature=args.temperature,
                 num_return_sequences=args.num_return_sequences,
             )
-            for j, output in enumerate(sample_outputs):
-                print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
+            _print_outputs(sample_outputs)
+
             print("beam search outputs:")
             beam_outputs = model.generate(
                 **prefix_input,
@@ -154,8 +174,8 @@ if __name__ == "__main__":
                 early_stopping=True,
                 num_return_sequences=args.num_return_sequences,
             )
-            for j, output in enumerate(beam_outputs):
-                print(f"cont. {j}:", tokenizer.decode(output[len(prefix_input.input_ids[0]):], skip_special_tokens=True))
+            _print_outputs(beam_outputs)
+
             input()
 
     except EOFError:
