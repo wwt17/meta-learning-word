@@ -126,17 +126,25 @@ if __name__ == "__main__":
             print("prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
             print(f"ground-truth suffix:", item["suffix"]) # type: ignore
 
+            generation_config = transformers.generation.GenerationConfig(
+                max_new_tokens=args.max_new_tokens,
+                pad_token_id=tokenizer.pad_token_id,
+                return_dict_in_generate=True,
+                output_scores=True,
+            )
+
             def _print_outputs(
                     outputs,
                     skip_special_tokens=True,
                     clean_up_tokenization_spaces=False,
                     **kwargs
             ):
-                for j, output in enumerate(outputs):
+                assert isinstance(outputs, transformers.utils.ModelOutput), "must set return_dict_in_generate=True"
+                for j, sequence in enumerate(outputs.sequences):  # type: ignore
                     print(
                         f"cont. {j}:",
                         tokenizer.decode(
-                            output[len(prefix_input.input_ids[0]):],
+                            sequence[len(prefix_input.input_ids[0]):],
                             skip_special_tokens=skip_special_tokens,
                             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
                             **kwargs
@@ -146,16 +154,14 @@ if __name__ == "__main__":
             print("greedy outputs:")
             greedy_outputs = model.generate(
                 **prefix_input,
-                pad_token_id=tokenizer.pad_token_id,
-                max_new_tokens=args.max_new_tokens,
+                generation_config=generation_config,
             )
             _print_outputs(greedy_outputs)
 
             print(f"sample with top-p={args.top_p:.2f} outputs:")
             sample_outputs = model.generate(
                 **prefix_input,
-                pad_token_id=tokenizer.pad_token_id,
-                max_new_tokens=args.max_new_tokens,
+                generation_config=generation_config,
                 do_sample=True,
                 top_k=0,
                 top_p=args.top_p,
@@ -167,8 +173,7 @@ if __name__ == "__main__":
             print("beam search outputs:")
             beam_outputs = model.generate(
                 **prefix_input,
-                pad_token_id=tokenizer.pad_token_id,
-                max_new_tokens=args.max_new_tokens,
+                generation_config=generation_config,
                 num_beams=args.num_beams,
                 no_repeat_ngram_size=2,
                 early_stopping=True,
