@@ -65,6 +65,9 @@ if __name__ == "__main__":
         "--num_return_sequences", type=int, default=5,
     )
     argparser.add_argument(
+        "--print_top_k_pred", type=int, default=0,
+    )
+    argparser.add_argument(
         "--seed", type=int, default=0,
         help="Random seed."
     )
@@ -137,6 +140,7 @@ if __name__ == "__main__":
                     outputs,
                     skip_special_tokens=True,
                     clean_up_tokenization_spaces=False,
+                    print_top_k_pred=args.print_top_k_pred,
                     **kwargs
             ):
                 assert isinstance(outputs, transformers.utils.ModelOutput), "must set return_dict_in_generate=True"
@@ -150,6 +154,16 @@ if __name__ == "__main__":
                             **kwargs
                         )
                     )
+                    if print_top_k_pred:
+                        assert outputs.scores is not None, "must set output_scores=True"  # type: ignore
+                        print(f"top-{print_top_k_pred} predictions:")
+                        for logits in outputs.scores:  # type: ignore
+                            probs = logits[j].softmax(dim=-1)
+                            topk_out = probs.topk(print_top_k_pred, dim=-1)
+                            for prob, idx in zip(*topk_out):
+                                print(f"{prob.item():4.0%} {tokenizer.convert_ids_to_tokens(idx.item()):<10s}", end="")
+                            print()
+
 
             print("greedy outputs:")
             greedy_outputs = model.generate(
