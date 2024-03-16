@@ -21,6 +21,16 @@ from evaluation_cls import construct_cls_example, cls_collate_fn, evaluate_cls
 from main import device
 
 
+def print_top_k_preds(logits, k: int, tokenizer):
+    print(f"top-{k} predictions:")
+    for logits_step in logits:
+        probs = logits_step.softmax(dim=-1)
+        topk_out = probs.topk(k, dim=-1)
+        for prob, idx in zip(*topk_out):
+            print(f"{prob.item():4.0%} {tokenizer.convert_ids_to_tokens(idx.item()):<10s}", end="")
+        print()
+
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
@@ -126,8 +136,10 @@ if __name__ == "__main__":
             print(f"ground-truth word:", item["word"]) # type: ignore
             print(f"ground-truth prefix:", item["prefix"]) # type: ignore
             prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
-            print("prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
+            print(f"     decoded prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
             print(f"ground-truth suffix:", item["suffix"]) # type: ignore
+            full_str = item["prefix"] + item["suffix"] # type: ignore
+            full_input = tokenizer(full_str, return_tensors='pt').to(device)
 
             generation_config = transformers.generation.GenerationConfig(
                 max_new_tokens=args.max_new_tokens,
@@ -156,14 +168,24 @@ if __name__ == "__main__":
                     )
                     if print_top_k_pred:
                         assert outputs.scores is not None, "must set output_scores=True"  # type: ignore
-                        print(f"top-{print_top_k_pred} predictions:")
-                        for logits in outputs.scores:  # type: ignore
-                            probs = logits[j].softmax(dim=-1)
-                            topk_out = probs.topk(print_top_k_pred, dim=-1)
-                            for prob, idx in zip(*topk_out):
-                                print(f"{prob.item():4.0%} {tokenizer.convert_ids_to_tokens(idx.item()):<10s}", end="")
-                            print()
+                        print_top_k_preds(
+                            (scores_step[j] for scores_step in outputs.scores),  # type: ignore
+                            print_top_k_pred,
+                            tokenizer
+                        )
 
+
+            print("ground-truth   full:", full_str)
+            gt_outputs = model(
+                **full_input,
+                return_dict=True,
+            )
+            if args.print_top_k_pred:
+                print_top_k_preds(
+                    gt_outputs.logits[0],
+                    args.print_top_k_pred,
+                    tokenizer
+                )
 
             print("greedy outputs:")
             greedy_outputs = model.generate(
