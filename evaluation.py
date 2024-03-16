@@ -99,6 +99,8 @@ if __name__ == "__main__":
         sep_token_id = 198
         tokenizer.pad_token = tokenizer.eos_token
     else:
+        # must not provide token_type_ids to the model
+        tokenizer.model_input_names = ['input_ids', 'attention_mask']
         fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" ", prompt=""))
         sep_token_id = tokenizer.convert_tokens_to_ids(fmt_kwargs["sep"]) # type: ignore
 
