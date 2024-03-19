@@ -60,10 +60,10 @@ if __name__ == "__main__":
         help="Number of classes for evaluation classification task."
     )
     argparser.add_argument(
-        "--max_new_tokens", type=int, default=20,
+        "--max_new_tokens", type=int, default=30,
     )
     argparser.add_argument(
-        "--top_p", type=float, default=0.9,
+        "--top_p", type=float, default=0.92,
     )
     argparser.add_argument(
         "--temperature", type=float, default=1.0,
@@ -72,7 +72,22 @@ if __name__ == "__main__":
         "--num_beams", type=int, default=5,
     )
     argparser.add_argument(
+        "--length_penalty", type=float, default=4.0,
+    )
+    argparser.add_argument(
+        "--no_repeat_ngram_size", type=int, default=4,
+    )
+    argparser.add_argument(
+        "--early_stopping", action="store_true",
+    )
+    argparser.add_argument(
         "--num_return_sequences", type=int, default=5,
+    )
+    argparser.add_argument(
+        "--print_decoded_prefix", action="store_true",
+    )
+    argparser.add_argument(
+        "--print_gt_full", action="store_true",
     )
     argparser.add_argument(
         "--print_top_k_pred", type=int, default=0,
@@ -138,7 +153,8 @@ if __name__ == "__main__":
             print(f"ground-truth word:", item["word"]) # type: ignore
             print(f"ground-truth prefix:", item["prefix"]) # type: ignore
             prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
-            print(f"     decoded prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
+            if args.print_decoded_prefix:
+                print(f"     decoded prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
             print(f"ground-truth suffix:", item["suffix"]) # type: ignore
             full_str = item["prefix"] + item["suffix"] # type: ignore
             full_input = tokenizer(full_str, return_tensors='pt').to(device)
@@ -177,17 +193,18 @@ if __name__ == "__main__":
                         )
 
 
-            print("ground-truth   full:", full_str)
-            gt_outputs = model(
-                **full_input,
-                return_dict=True,
-            )
-            if args.print_top_k_pred:
-                print_top_k_preds(
-                    gt_outputs.logits[0],
-                    args.print_top_k_pred,
-                    tokenizer
+            if args.print_gt_full:
+                print("ground-truth   full:", full_str)
+                gt_outputs = model(
+                    **full_input,
+                    return_dict=True,
                 )
+                if args.print_top_k_pred:
+                    print_top_k_preds(
+                        gt_outputs.logits[0],
+                        args.print_top_k_pred,
+                        tokenizer
+                    )
 
             print("greedy outputs:")
             greedy_outputs = model.generate(
@@ -213,8 +230,9 @@ if __name__ == "__main__":
                 **prefix_input,
                 generation_config=generation_config,
                 num_beams=args.num_beams,
-                no_repeat_ngram_size=2,
-                early_stopping=True,
+                length_penalty=args.length_penalty,
+                no_repeat_ngram_size=args.no_repeat_ngram_size,
+                early_stopping=args.early_stopping,
                 num_return_sequences=args.num_return_sequences,
             )
             _print_outputs(beam_outputs)
