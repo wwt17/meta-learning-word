@@ -97,6 +97,7 @@ def build_word_use_data(
         data: datasets.Dataset,
         used_vocab: Mapping[str, tuple[str, Any]],
         mode: str = "word",
+        offsets_matching_pos: bool = False,
 ) -> Mapping[str, list[str]]:
     word_use_data = defaultdict(list)
 
@@ -109,7 +110,11 @@ def build_word_use_data(
                     potential_word_offsets.append((word, offset))
             if potential_word_offsets:
                 used_word, _ = random.choice(potential_word_offsets)
-                offsets = [offset for word, offset in potential_word_offsets if word == used_word]
+                offsets = [
+                    offset
+                    for word, offset in (potential_word_offsets if offsets_matching_pos else word_offsets)
+                    if word == used_word
+                ]
                 word_use_data[used_word].append({"sentence": sentence, "offsets": offsets})
 
     elif mode == "word":
@@ -156,7 +161,7 @@ def build_word_use_data(
             word_offsets = pre_tokenizer.pre_tokenize_str(sentence)
             offsets = []
             for (word, offset), pos in zip(word_offsets, sentence_pos_tags):
-                if word == word_ and pos == used_vocab[word][0]:
+                if word == word_ and (not offsets_matching_pos or pos == used_vocab[word][0]):
                     offsets.append(offset)
             word_use_data[word_].append({"sentence": sentence, "offsets": offsets})
 
@@ -212,6 +217,9 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--build_word_use_data_mode", choices=["sentence", "word"],
         default="word"
+    )
+    argparser.add_argument(
+        "--offsets_matching_pos", action="store_true",
     )
     argparser.add_argument(
         "--build_word_use_data_from_original_splits", action="store_true",
@@ -439,7 +447,12 @@ if __name__ == "__main__":
     word_use_dataset = {}
     for split, data in original_dataset.items():
         print(f"building word use data from original {split} split...")
-        word_use_data = build_word_use_data(data, used_vocab, mode=args.build_word_use_data_mode)
+        word_use_data = build_word_use_data(
+            data,
+            used_vocab,
+            mode=args.build_word_use_data_mode,
+            offsets_matching_pos=args.offsets_matching_pos,
+        )
         word_use_dataset[split] = word_use_data
 
     if not args.build_word_use_data_from_original_splits:
