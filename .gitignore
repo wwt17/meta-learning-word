@@ -3,7 +3,7 @@ __pycache__/
 /ckpt/
 /script/
 /dataset_cache/
-/word_use_data/
+/word_use_data*/
 /vocab/
 /*.pdf
 /*.png

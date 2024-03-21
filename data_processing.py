@@ -178,6 +178,10 @@ if __name__ == "__main__":
         help="Dataset name on Hugging Face Hub, or path to the dataset."
     )
     argparser.add_argument(
+        "--lower", action="store_true",
+        help="Lowercase all text."
+    )
+    argparser.add_argument(
         "--print_original_use_samples", action="store_true",
         help="Print samples of words in the vocabulary with their uses."
     )
@@ -262,6 +266,11 @@ if __name__ == "__main__":
     dataset: datasets.DatasetDict = datasets.load_dataset(args.dataset)  # type: ignore
     if "text" in dataset["train"].features:
         dataset = dataset.rename_column("text", "sentence")
+    dataset = dataset.map(lambda example: {"raw_sentence": example["sentence"]})
+    if args.lower:
+        dataset = dataset.map(
+            lambda example: {"sentence": example["sentence"].lower()}
+        )
 
     pre_tokenizer = tokenizers.pre_tokenizers.WhitespaceSplit()  # type: ignore
 
@@ -273,9 +282,10 @@ if __name__ == "__main__":
     pos_tag_dfs = []
     for split, data_split in dataset.items():
         print(f"{split} split:")
+        raw_sentences = data_split["raw_sentence"]
         sentences = data_split["sentence"]
 
-        pos_tags = cache(dataset_cache_path/f'{split}.pos_tags.pkl')(get_pos_tags)(sentences, nlp)
+        pos_tags = cache(dataset_cache_path/f'{split}.pos_tags.pkl')(get_pos_tags)(raw_sentences, nlp)
         data_split = data_split.add_column("pos_tags", pos_tags)
         dataset[split] = data_split
         pos_tag_df = pd.DataFrame(list(chain.from_iterable(pos_tags)), columns=['pos'])
