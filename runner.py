@@ -8,6 +8,7 @@ import argparse
 from pathlib import Path
 import copy
 import importlib
+import click
 
 argparser = argparse.ArgumentParser(
     description="Generate and optionally submit slurm jobs. runner_config.py is the configuration file.")
@@ -143,5 +144,5 @@ f"""#!/bin/bash
 srun {jobcommand}
 """)
 
-    if args.sbatch:
+    if args.sbatch and click.confirm("Submit job through sbatch?", default=True):
         os.system(job_start_command + " &")
