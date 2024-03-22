@@ -1,6 +1,7 @@
 from typing import Any, Iterable, TypeVar
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
+from enum import IntEnum
 import argparse
 from pathlib import Path
 from itertools import islice, chain
@@ -93,11 +94,20 @@ def build_vocab(
     return vocab
 
 
+class MatchingPosLevel(IntEnum):
+    none = 0
+    assign = 1
+    offsets = 2
+
+    def __str__(self):
+        return self.name
+
+
 def build_word_use_data(
         data: datasets.Dataset,
         used_vocab: Mapping[str, tuple[str, Any]],
         mode: str = "word",
-        offsets_matching_pos: bool = False,
+        matching_pos_level: MatchingPosLevel = MatchingPosLevel.none,
 ) -> Mapping[str, list[str]]:
     word_use_data = defaultdict(list)
 
@@ -106,13 +116,13 @@ def build_word_use_data(
             word_offsets = pre_tokenizer.pre_tokenize_str(sentence)
             potential_word_offsets = []
             for (word, offset), pos in zip(word_offsets, sentence_pos_tags):
-                if word in used_vocab and pos == used_vocab[word][0]:
+                if word in used_vocab and (matching_pos_level < MatchingPosLevel.assign or pos == used_vocab[word][0]):
                     potential_word_offsets.append((word, offset))
             if potential_word_offsets:
                 used_word, _ = random.choice(potential_word_offsets)
                 offsets = [
                     offset
-                    for word, offset in (potential_word_offsets if offsets_matching_pos else word_offsets)
+                    for word, offset in (potential_word_offsets if matching_pos_level >= MatchingPosLevel.offsets else word_offsets)
                     if word == used_word
                 ]
                 word_use_data[used_word].append({"sentence": sentence, "offsets": offsets})
@@ -122,7 +132,7 @@ def build_word_use_data(
         for i, (sentence, sentence_pos_tags) in enumerate(zip(data["sentence"], data["pos_tags"])):
             word_offsets = pre_tokenizer.pre_tokenize_str(sentence)
             for (word, offset), pos in zip(word_offsets, sentence_pos_tags):
-                if word in used_vocab and pos == used_vocab[word][0]:
+                if word in used_vocab and (matching_pos_level < MatchingPosLevel.assign or pos == used_vocab[word][0]):
                     occurrences = remaining_vocab[word]
                     if not (occurrences and occurrences[-1] == i):
                         occurrences.append(i)
@@ -161,7 +171,7 @@ def build_word_use_data(
             word_offsets = pre_tokenizer.pre_tokenize_str(sentence)
             offsets = []
             for (word, offset), pos in zip(word_offsets, sentence_pos_tags):
-                if word == word_ and (not offsets_matching_pos or pos == used_vocab[word][0]):
+                if word == word_ and (matching_pos_level < MatchingPosLevel.offsets or pos == used_vocab[word][0]):
                     offsets.append(offset)
             word_use_data[word_].append({"sentence": sentence, "offsets": offsets})
 
@@ -223,7 +233,7 @@ if __name__ == "__main__":
         default="word"
     )
     argparser.add_argument(
-        "--offsets_matching_pos", action="store_true",
+        "--matching_pos_level", type=MatchingPosLevel.__getitem__, choices=list(MatchingPosLevel), default=MatchingPosLevel.none
     )
     argparser.add_argument(
         "--build_word_use_data_from_original_splits", action="store_true",
@@ -461,7 +471,7 @@ if __name__ == "__main__":
             data,
             used_vocab,
             mode=args.build_word_use_data_mode,
-            offsets_matching_pos=args.offsets_matching_pos,
+            matching_pos_level=args.matching_pos_level,
         )
         word_use_dataset[split] = word_use_data
 
