@@ -96,6 +96,9 @@ if __name__ == "__main__":
         "--seed", type=int, default=0,
         help="Random seed."
     )
+    argparser.add_argument(
+        "--interactive", action="store_true",
+    )
     args = argparser.parse_args()
 
     set_seed(args.seed)
@@ -237,7 +240,10 @@ if __name__ == "__main__":
             )
             _print_outputs(beam_outputs)
 
-            input()
+            if args.interactive:
+                input()
+            else:
+                print()
 
     except EOFError:
         pass
