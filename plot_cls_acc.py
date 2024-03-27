@@ -1,0 +1,64 @@
+import re
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+rc = {
+    "axes.spines.right": False,
+    "axes.spines.top": False,
+    "legend.fontsize": 8,
+    "legend.title_fontsize": 9,
+}
+sns.set_theme(style="whitegrid", rc=rc)
+
+
+result_files = [
+    {
+        n_examples: f"ckpt/meta-word_data_dir_word_use_data_clean:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data_clean:childes:word_n_examples_{n_examples}/slurm.out"
+        for n_examples in range(3, 11)
+    },
+    {
+        n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data_clean:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
+        for n_examples in range(3, 11)
+    }
+][0]
+
+n_classes = None
+accuracies = {}
+
+for n_examples, result_file in result_files.items():
+    with open(result_file, "r") as f:
+        n_classes_, accuracies_ = [], []
+        for line in f:
+            match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
+            if match is None:
+                break
+            n_cls, accuracy = int(match.group(1)), float(match.group(2))
+            n_classes_.append(n_cls)
+            accuracies_.append(accuracy)
+    if n_classes is None:
+        n_classes = n_classes_
+    else:
+        assert n_classes == n_classes_
+    accuracies[n_examples] = accuracies_
+
+n_classes = np.array(n_classes)
+df = pd.DataFrame(accuracies, index=n_classes)
+df.index.name = "#classes"
+df.columns.name = "#examples"
+
+palette = sns.color_palette("husl", len(df.columns))
+
+df["chance"] = df.index.map(lambda c: 100/c)
+palette.append((0., 0., 0.))
+
+dashes = {column: {"chance": (1, 1)}.get(column, "") for column in df.columns}
+ax = sns.lineplot(df, palette=palette, dashes=dashes)
+ax.set_xticks(n_classes)
+ax.set_ylabel("Accuracy (%)")
+ax.set_ylim(bottom=0, top=100)
+ax.set_title("Classification Accuracy")
+
+plt.savefig("classification_accuracies.png", transparent=True, dpi=1000)  # type: ignore
