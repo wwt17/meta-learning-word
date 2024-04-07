@@ -7,3 +7,5 @@ __pycache__/
 /vocab/
 /*.pdf
 /*.png
+/babylm_data
+/childes
