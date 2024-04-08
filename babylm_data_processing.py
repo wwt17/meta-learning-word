@@ -193,10 +193,7 @@ if __name__ == "__main__":
         else:
             print(f"Processing {file_path}")
 
-        nlp = spacy.load(
-            "en_core_web_sm",  # TODO: switch to en_core_web_trf in the second pass and enable tagger
-            enable=["tagger"]
-        )
+        nlp = spacy.load("en_core_web_sm", enable=["tagger"])
         nlp.max_length = int(1e9)
         if config.get("space_tokenized", False):
             nlp.tokenizer = Tokenizer(nlp.vocab, token_match=re.compile(r'\S+').match)
@@ -214,7 +211,7 @@ if __name__ == "__main__":
         else:
             lines = list(filter(bool, lines))
 
-        with open(file_path.parent/(file_path.name+".pass1"), "w") as f:
+        with open(file_path.parent/(file_path.name+".txt"), "w") as f:
             for doc in nlp.pipe(tqdm.tqdm(lines)):
                 for sent in doc.sents:
                     print(" ".join(map(str, sent)), file=f)
