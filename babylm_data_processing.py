@@ -33,6 +33,16 @@ bracket_pairs = [
 eos_puncts = [".", "?", "!", ";", ":"]
 
 
+hyphen_edge_regexes = [
+    re.compile(r"(?<=[^\s-])(?=--)|(?<=--)(?=[^\s-])"),
+    re.compile(r"(?<=[^\s-])(?=—)|(?<=—)(?=[^\s-])"),
+]
+def add_space_around_hyphens(s):
+    for hyphen_edge_regex in hyphen_edge_regexes:
+        s = hyphen_edge_regex.sub(" ", s)
+    return s
+
+
 def refine_tokenizer(tokenizer):
     tokenizer.add_special_case("``", [{ORTH: "``"}])
 
@@ -210,6 +220,8 @@ if __name__ == "__main__":
             lines = list(concat_paragraphs(lines))
         else:
             lines = list(filter(bool, lines))
+
+        lines = list(map(add_space_around_hyphens, lines))
 
         with open(file_path.parent/(file_path.name+".txt"), "w") as f:
             for doc in nlp.pipe(tqdm.tqdm(lines)):
