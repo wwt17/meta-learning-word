@@ -7,11 +7,19 @@ from itertools import islice, chain
 import pickle
 import torch
 import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 from text_configs import SEP_TOKEN, NEW_TOKEN
 
 
 def frac_repr(a, b, prec=2):
     return f"{a}/{b}={a/b:.{prec}%}"
+
+
+def normalize_dict(d):
+    sum_value = sum(d.values())
+    return {key: value / sum_value for key, value in d.items()}
 
 
 def zipdict(d: Mapping):
@@ -96,6 +104,70 @@ def get_pos_tags(sentences, nlp):
         sentence_pos_tags = [token.tag_ for token in doc]
         pos_tags.append(sentence_pos_tags)
     return pos_tags
+
+
+def plot_bar(
+        x, y, bottom=None, color=None, hue=None, palette=None,
+        width=1, align='center',
+        x_min=None, x_max=None,
+        x_tick_step=None,
+        y_min=None, y_max=None,
+        y_tick_step=None,
+        y_position='right',
+        legend=False,
+        ax=None,
+        **kwargs
+):
+    if x_min is None:
+        x_min = 0
+    if x_max is None:
+        x_max = len(x)
+    if (x_min, x_max) != (0, len(x)):
+        x_slice = slice(x_min, x_max)
+        x = x[x_slice]
+        y = y[x_slice]
+        if bottom is not None:
+            bottom = bottom[x_slice]
+        if color is not None:
+            color = color[x_slice]
+        if hue is not None:
+            hue = hue[x_slice]
+    if ax is None:
+        ax = plt.gca()
+
+    if hue is not None:
+        if palette is not None:
+            color = [palette[h] for h in hue]
+            if legend:
+                used_hue = set(hue)
+                if isinstance(palette, dict):
+                    legend_palette = {key: value for key, value in palette.items() if key in used_hue}
+                else:
+                    legend_palette = {i: value for i, value in enumerate(palette) if i in used_hue}
+                patches = [Patch(color=color, label=label) for label, color in legend_palette.items()]
+                ax.legend(handles=patches)
+        else:
+            color = hue
+
+    align_dx = {'center': -0.5, 'edge': 0}[align]
+    ax.set_xlim(x_min + align_dx, x_max + align_dx)
+    if x_tick_step is not None:
+        ax.set_xticks(np.arange(x_min, x_max, x_tick_step))
+
+    if (y_min, y_max) != (None, None):
+        ax.set_ylim(y_min, y_max)
+    if y_min is None:
+        y_min = 0
+    if y_max is None:
+        y_max = max(y)+1
+    if y_tick_step is not None:
+        ax.set_yticks(np.arange(y_min, y_max, y_tick_step))
+    if y_position is not None:
+        ax.yaxis.set_ticks_position(y_position)
+        ax.yaxis.set_label_position(y_position)
+    ax.grid(axis='y')
+
+    return ax.bar(x, y, bottom=bottom, color=color, width=width, align=align, **kwargs)
 
 
 def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> str:
