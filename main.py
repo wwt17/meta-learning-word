@@ -70,6 +70,7 @@ def main(project="meta-learning-word", **kwargs):
         wandb.config.data_dir,
         lm=False,
         freq_cutoff=2,
+        cache_tokenizer=True,
     )
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
@@ -91,8 +92,8 @@ def main(project="meta-learning-word", **kwargs):
     n_params = sum(map(torch.Tensor.nelement, model.parameters()))
     print(f"model #parameters: {n_params}")
 
-    loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)
-    raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)
+    loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)  # type: ignore
+    raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)  # type: ignore
     optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
