@@ -12,7 +12,7 @@ import tqdm
 import datasets
 import tokenizers
 import transformers
-from transformers import PreTrainedTokenizerFast, set_seed
+from transformers import set_seed
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -22,7 +22,7 @@ import seaborn as sns
 from utils import frac_repr, normalize_dict, cache, get_pos_tags, plot_bar, replace_at_offsets
 from pos_tags import extend_pos, pos_mappings
 from plotting import palette
-from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
+from text_configs import NEW_TOKEN
 
 
 nlp = spacy.load("en_core_web_trf", exclude=["parser", "attribute_ruler", "lemmatizer", "ner"])
@@ -83,30 +83,6 @@ def get_max_freq_tag_vocab(tag_counter: Mapping[KeyType, Mapping[TagType, int]])
         word: get_max_freq_tag(tag_counts)
         for word, tag_counts in tag_counter.items()
     }
-
-
-def build_vocab(
-        meta_data: Mapping[str, list[dict]],
-        lm_data: Optional[datasets.Dataset] = None,
-        exclude_meta_words: bool = True,
-        special_tokens: list[str] = SPECIAL_TOKENS,
-        new_tokens: list[str] = NEW_TOKENS,
-) -> dict[str, int]:
-    sentences = (example["sentence"] for word, examples in meta_data.items() for example in examples)
-    if lm_data is not None:
-        lm_sentences = lm_data["sentence"]
-        sentences = chain(sentences, lm_sentences)
-    pre_tokenized_sentences = map(pre_tokenizer.pre_tokenize_str, sentences)
-    vocab = sorted_counter_dict(count_tokens(pre_tokenized_sentences))
-    if exclude_meta_words:
-        vocab = {word for word in vocab if word not in meta_data}
-    vocab = (
-        special_tokens +
-        [word for word in vocab if word not in special_tokens] +
-        new_tokens
-    )
-    vocab = {word: idx for idx, word in enumerate(vocab)}
-    return vocab
 
 
 class MatchingPosLevel(IntEnum):
@@ -283,13 +259,9 @@ if __name__ == "__main__":
         help="Plot POS tag distribution."
     )
     argparser.add_argument(
-        "--tokenize_original_dataset", action="store_true",
-        help="Tokenize the original dataset and plot length distribution."
-    )
-    argparser.add_argument(
         "--used_pos", nargs="+",
         default=[
-            "NN", "NNS",  # nouns
+            "NN", "NNS", "NNP", "NNPS",  # nouns
             "VB", "VBD", "VBG", "VBN", "VBP", "VBZ",  # verbs
             "JJ", "JJR", "JJS",  # adjectives
             "RB", "RBR", "RBS",  # adverbs
@@ -318,10 +290,6 @@ if __name__ == "__main__":
         "--max_freq", type=int,
         help="Maximum frequncy of word for meta learning. No limit if not "
              "specified."
-    )
-    argparser.add_argument(
-        "--oov_freq", type=int, default=0,
-        help="Remove words <= this frequency from the vocabulary."
     )
     argparser.add_argument(
         "--allow_duplicate_sents", action="store_true",
@@ -479,12 +447,12 @@ if __name__ == "__main__":
         ax.set_ylabel("Frequency")
         fig.savefig(dataset_cache_path/f"word_frequency.top.{args.plot_format}", transparent=True) # type: ignore
 
-        fig, ax = plt.subplots(1, 1, figsize=(16, 4))
+        fig, ax = plt.subplots(1, 1, figsize=(16, 16))
         plot_bar(
             np.arange(len(y)), y,
             hue=hue, palette=palette,
             x_tick_step=len(y)//20,
-            y_max=30,
+            y_max=y[len(y)//10],
             y_tick_step=2,
             legend=True,
             ax=ax,
@@ -566,43 +534,3 @@ if __name__ == "__main__":
         with open(save_path, "w") as f:
             for sentence in lm_data["sentence"]:
                 print(sentence, file=f)
-
-
-    if args.tokenize_original_dataset:
-        vocab = build_vocab(meta_dataset["train"], lm_dataset["train"])  # type: ignore
-        # build tokenizer
-        tokenizer = tokenizers.Tokenizer(
-            tokenizers.models.WordLevel(vocab, UNK_TOKEN)  # type: ignore
-        )
-        tokenizer.pre_tokenizer = pre_tokenizer # type: ignore
-        tokenizer.post_processor = tokenizers.processors.TemplateProcessing( # type: ignore
-            single=f"{SEP_TOKEN} $A {SEP_TOKEN}:1",
-            pair=f"{SEP_TOKEN} $A {SEP_TOKEN}:1 $B:1 {SEP_TOKEN}:2",
-            special_tokens=[(SEP_TOKEN, 2)],
-        )
-        tokenizer.enable_padding(
-            pad_id=tokenizer.token_to_id(PAD_TOKEN),
-            pad_token=PAD_TOKEN,
-        )
-        tokenizer = PreTrainedTokenizerFast(
-            tokenizer_object=tokenizer,
-            unk_token=UNK_TOKEN,
-            pad_token=PAD_TOKEN,
-            cls_token=SEP_TOKEN,
-            sep_token=SEP_TOKEN,
-        )
-
-        dataset = dataset.map(
-            lambda examples: tokenizer(examples["sentence"]),
-            batched=True
-        )
-        dataset = dataset.map(
-            lambda example: {"length": len(example["input_ids"])},
-            batched=False
-        )
-
-        fig, ax = plt.subplots(1, 1, figsize=(4, 3), sharex=True, sharey=False)
-        plot = sns.histplot(np.array(dataset["length"])-2, binwidth=1, ax=ax)
-        ax.set_xlabel("sentence length")
-        ax.set_xlim(xmin=0)
-        fig.savefig(dataset_cache_path/f"length_distribution.{args.plot_format}", transparent=True) # type: ignore

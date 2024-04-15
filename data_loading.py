@@ -4,10 +4,90 @@ import argparse
 from pathlib import Path
 from collections import defaultdict
 from itertools import islice, chain
+from functools import partial
 import json
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 import datasets
-from utils import zipdict, batchify, example_str
+import tokenizers
+from transformers import PreTrainedTokenizerFast
+from utils import frac_repr, zipdict, batchify, cache, example_str
+from data_processing import count_tokens, sorted_counter_dict
+from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
+
+
+def get_meta_data_sentences(
+        data: datasets.Dataset,
+):
+    return (
+        example["sentence"]
+        for examples in data["examples"]
+        for example in examples
+    )
+
+
+def get_lm_data_sentences(
+        data: datasets.Dataset,
+):
+    return data["sentence"]
+
+
+def build_vocab(
+        pre_tokenized_sentences: Iterable[Sequence[tuple[str, Any]]],
+        freq_cutoff: int = 0,
+        exclude_tokens: Iterable[str] = set(),
+        special_tokens: list[str] = SPECIAL_TOKENS,
+        new_tokens: list[str] = NEW_TOKENS,
+) -> dict[str, int]:
+    vocab = sorted_counter_dict(count_tokens(pre_tokenized_sentences))
+    exclude_tokens = set(exclude_tokens) | set(special_tokens)
+    vocab = [
+        token
+        for token, occs in vocab.items()
+        if len(occs) > freq_cutoff and token not in exclude_tokens
+    ]
+    vocab = special_tokens + vocab + new_tokens
+    vocab = {token: idx for idx, token in enumerate(vocab)}
+    return vocab
+
+
+tokenizer_cache = partial(
+    cache,
+    loader=PreTrainedTokenizerFast.from_pretrained,
+    saver=PreTrainedTokenizerFast.save_pretrained,
+)
+
+
+def get_tokenizer(
+        sentences: Iterable[str],
+        freq_cutoff: int = 0,
+        exclude_tokens: Iterable[str] = set(),
+) -> PreTrainedTokenizerFast:
+    pre_tokenizer = tokenizers.pre_tokenizers.WhitespaceSplit()  # type: ignore
+    vocab = build_vocab(
+        map(pre_tokenizer.pre_tokenize_str, sentences),
+        freq_cutoff=freq_cutoff,
+        exclude_tokens=exclude_tokens,
+    )
+    tokenizer = tokenizers.Tokenizer(
+        tokenizers.models.WordLevel(vocab, UNK_TOKEN)  # type: ignore
+    )
+    tokenizer.pre_tokenizer = pre_tokenizer # type: ignore
+    tokenizer.enable_padding(
+        pad_id=tokenizer.token_to_id(PAD_TOKEN),
+        pad_token=PAD_TOKEN,
+    )
+    tokenizer = PreTrainedTokenizerFast(
+        tokenizer_object=tokenizer,
+        unk_token=UNK_TOKEN,
+        pad_token=PAD_TOKEN,
+        cls_token=SEP_TOKEN,
+        sep_token=SEP_TOKEN,
+        bos_token=SEP_TOKEN,
+        eos_token=SEP_TOKEN,
+    )
+    return tokenizer
 
 
 def sample_examples(
@@ -48,7 +128,7 @@ def sample_examples(
     return data.map(_get_samples, batched=True)
 
 
-def load_dataset(data_path):
+def load_meta_dataset(data_path):
     with open(data_path, "r") as f:
         data = json.load(f)
     data = [{"word": word, "examples": examples} for word, examples in data.items()]
@@ -56,41 +136,127 @@ def load_dataset(data_path):
     return data
 
 
-if __name__ == "__main__":
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument(
-        "--data", type=Path,
-        default=Path("word_use_data")/"childes"/"word"/"train.json",
-        help="(json) data to load from."
+def load_dataset_and_tokenizer(
+        dataset_dir,
+        lm: bool = True,
+        splits = ["train", "validation", "test"],
+        freq_cutoff: int = 0,
+        exclude_meta_words: bool = True,
+):
+    meta_dataset = datasets.DatasetDict({
+        split: load_meta_dataset(Path(dataset_dir, f"meta.{split}.json"))
+        for split in splits
+    })
+    sentences = get_meta_data_sentences(meta_dataset["train"])
+    if lm:
+        lm_dataset: datasets.DatasetDict = datasets.load_dataset(
+            str(dataset_dir),
+            data_files={split: f"lm.{split}.txt" for split in splits}
+        )  # type: ignore
+        if "text" in lm_dataset["train"].features:
+            lm_dataset = lm_dataset.rename_column("text", "sentence")
+        sentences = chain(sentences, get_lm_data_sentences(lm_dataset["train"]))
+    else:
+        lm_dataset = None  # type: ignore
+    if exclude_meta_words:
+        exclude_tokens = chain.from_iterable(
+            (data["word"] for split, data in meta_dataset.items()))
+    else:
+        exclude_tokens = set()
+    tokenizer = tokenizer_cache(Path(dataset_dir, "tokenizer"))(get_tokenizer)(
+        sentences,
+        freq_cutoff=freq_cutoff,
+        exclude_tokens=exclude_tokens,
     )
-    argparser.add_argument(
-        "--n_class", type=int, default=2,
-        help="Number of words to classify, i.e., n-way classification."
-    )
-    argparser.add_argument(
-        "--n_study_examples", type=int, default=2,
-        help="Number of study examples for each new word."
-    )
-    argparser.add_argument(
-        "--max_sample_times", type=int, default=1,
-        help="Max sample times per word."
-    )
-    argparser.add_argument(
-        "--seed", type=int,
-        help="Random seed."
-    )
-    args = argparser.parse_args()
+    return meta_dataset, lm_dataset, tokenizer
 
-    np.random.seed(args.seed)
-    rng = np.random.default_rng(seed=args.seed)
 
-    data = load_dataset(args.data)
+def displot(data, discrete=True, binrange=None, y_grid=True, plot_mean=True, mean_color='r', height=4, aspect=2, **kwargs):
+    sns.displot(data, discrete=discrete, binrange=binrange, height=height, aspect=aspect, **kwargs)
+    if plot_mean:
+        mean_value = np.mean(data)
+        plt.axvline(mean_value, color=mean_color, linestyle='--', label='mean')
+        plt.text(mean_value, plt.gca().get_ylim()[0], f'{mean_value:.2f}', ha='center', va='top', color=mean_color)
+        plt.legend()
+    if binrange is not None:
+        plt.xlim(binrange[0]-0.5, binrange[1]+0.5)
+    if y_grid:
+        plt.grid(axis="y")
+
+
+def sentence_stats(sentences: Iterable[str], tokenizer, path, title: str, length_range=None, plot_format="png"):
+    lengths = []
+    total_n_unks = 0
+    for sentence in sentences:
+        encoding = tokenizer(sentence)
+        input_ids = encoding["input_ids"]
+        length = len(input_ids)
+        n_unks = sum(idx == tokenizer.unk_token_id for idx in input_ids)
+        lengths.append(length)
+        total_n_unks += n_unks
+    lengths = np.array(lengths)
+    n_sentences = len(lengths)
+    print(f"{n_sentences=}")
+    total_n_tokens = np.sum(lengths)
+    print(f"{total_n_tokens=}")
+    print(f"length_mean={total_n_tokens/n_sentences:.2f}")
+    print(f"unk_rate={frac_repr(total_n_unks, total_n_tokens)}")
+    length_dist = np.bincount(lengths)
+    print(f"length distribution:\n{length_dist}")
+    displot(lengths, binrange=length_range)
+    plt.title(title)
+    plt.savefig(path/f"{title}.{plot_format}", transparent=True)
+
+
+def uses_stats(data: datasets.Dataset, path, title: str, n_uses_range=None, plot_format="png"):
+    n_words = len(data)
+    print(f"{n_words=}")
+    n_uses = np.array([len(examples) for examples in data["examples"]])
+    total_n_uses = np.sum(n_uses)
+    print(f"{total_n_uses=}")
+    print(f"n_uses_mean={total_n_uses/n_words:.2f}")
+    n_uses_dist = np.bincount(n_uses)
+    print(f"n_uses distribution:\n{n_uses_dist}")
+    displot(n_uses, binrange=n_uses_range)
+    plt.title(title)
+    plt.savefig(path/f"{title}.{plot_format}", transparent=True)
+
+
+def dataset_stats(
+        meta_dataset: datasets.DatasetDict,
+        lm_dataset: datasets.DatasetDict,
+        tokenizer: PreTrainedTokenizerFast,
+        path,
+        length_range=(0, 50),
+        n_uses_range=(5, 30),
+):
+    print("meta data:")
+    for split, data in meta_dataset.items():
+        print(f"{split} split:")
+        uses_stats(data, path, f"meta learning word n_uses {split} distribution", n_uses_range=n_uses_range)
+        sentence_stats(get_meta_data_sentences(data), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
+
+    print("lm data:")
+    for split, data in lm_dataset.items():
+        print(f"{split} split:")
+        sentence_stats(get_lm_data_sentences(data), tokenizer, path, f"lm sentence length {split} distribution", length_range=length_range)
+
+
+def interactive_classification(
+        data: datasets.Dataset,
+        n_class: int,
+        n_study_examples: int,
+        max_sample_times: int,
+        seed: Optional[int] = None,
+):
+    np.random.seed(seed)
+    rng = np.random.default_rng(seed=seed)
 
     n_episodes = 0
     while True:
         try:
             data = data.shuffle(generator=rng)
-            for word_examples_batch in batchify(sample_examples(data, args.n_study_examples+1, max_sample_times=args.max_sample_times, rng=rng), batch_size=args.n_class):
+            for word_examples_batch in batchify(sample_examples(data, n_study_examples+1, max_sample_times=max_sample_times, rng=rng), batch_size=n_class):
                 n_episodes += 1
                 print(f"Episode #{n_episodes}:")
                 batch_size = len(word_examples_batch)
@@ -130,3 +296,56 @@ if __name__ == "__main__":
         except EOFError:
             print()
             break
+
+
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument(
+        "mode", choices=["stat", "class"],
+    )
+    argparser.add_argument(
+        "--data", type=Path,
+        default=Path("word_use_data", "childes", "word"),
+        help="Dataset to load. In stat mode, should be the dataset directory; "
+             "In class mode, should be the json file containing the split."
+    )
+    argparser.add_argument(
+        "--freq_cutoff", type=int, default=2,
+        help="Remove words with frequency <= freq_cutoff from the vocabulary."
+    )
+    argparser.add_argument(
+        "--include_meta_words", action="store_true",
+        help="Include words for meta learning in the vocabulary."
+    )
+    argparser.add_argument(
+        "--n_class", type=int, default=2,
+        help="Number of words to classify, i.e., n-way classification."
+    )
+    argparser.add_argument(
+        "--n_study_examples", type=int, default=2,
+        help="Number of study examples for each new word."
+    )
+    argparser.add_argument(
+        "--max_sample_times", type=int, default=1,
+        help="Max sample times per word."
+    )
+    argparser.add_argument(
+        "--seed", type=int,
+        help="Random seed."
+    )
+    args = argparser.parse_args()
+
+    if args.mode == "stat":
+        meta_dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
+            args.data,
+            freq_cutoff = args.freq_cutoff,
+            exclude_meta_words = not args.include_meta_words,
+        )
+        dataset_stats(meta_dataset, lm_dataset, tokenizer, args.data)
+
+    elif args.mode == "class":
+        data = load_meta_dataset(args.data)
+        interactive_classification(data, args.n_class, args.n_study_examples, args.max_sample_times, args.seed)
+
+    else:
+        raise Exception(f"Unknown mode {args.mode}")

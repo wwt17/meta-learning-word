@@ -16,51 +16,15 @@ from torch.nn import CrossEntropyLoss
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
-import datasets
-import tokenizers
 import transformers
-from transformers import PreTrainedTokenizerFast, DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, set_seed
-from utils import frac_repr, cache, to, example_str, concat_examples
-from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
-from data_processing import build_vocab
-from data_loading import load_dataset, sample_examples
+from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, set_seed
+from utils import frac_repr, to, example_str, concat_examples
+from data_loading import load_dataset_and_tokenizer, sample_examples
 from evaluation_cls import construct_cls_example, cls_collate_fn, evaluate_cls
 from concat_lm_dataset import ConcatLMDataset
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-tokenizer_cache = partial(
-    cache,
-    loader=PreTrainedTokenizerFast.from_pretrained,
-    saver=PreTrainedTokenizerFast.save_pretrained,
-)
-
-
-def get_tokenizer(sentences: Iterable[str]):
-    pre_tokenizer = tokenizers.pre_tokenizers.WhitespaceSplit()  # type: ignore
-    vocab = build_vocab(
-        map(pre_tokenizer.pre_tokenize_str, sentences)
-    )
-    tokenizer = tokenizers.Tokenizer(
-        tokenizers.models.WordLevel(vocab, UNK_TOKEN)  # type: ignore
-    )
-    tokenizer.pre_tokenizer = pre_tokenizer # type: ignore
-    tokenizer.enable_padding(
-        pad_id=tokenizer.token_to_id(PAD_TOKEN),
-        pad_token=PAD_TOKEN,
-    )
-    tokenizer = PreTrainedTokenizerFast(
-        tokenizer_object=tokenizer,
-        unk_token=UNK_TOKEN,
-        pad_token=PAD_TOKEN,
-        cls_token=SEP_TOKEN,
-        sep_token=SEP_TOKEN,
-        bos_token=SEP_TOKEN,
-        eos_token=SEP_TOKEN,
-    )
-    return tokenizer
 
 
 def save_checkpoint(ckpt_path, model, optimizer, scheduler):
@@ -102,16 +66,11 @@ def main(project="meta-learning-word", **kwargs):
     if wandb.config.seed is not None:
         set_seed(wandb.config.seed)
 
-    dataset = datasets.DatasetDict({
-        split: load_dataset(Path(wandb.config.data_dir, f"{split}.json"))
-        for split in ["train", "validation", "test"]
-    })
-
-    tokenizer = tokenizer_cache(Path(wandb.config.data_dir, "tokenizer"))(get_tokenizer)((
-        example["sentence"]
-        for examples in dataset["train"]["examples"]
-        for example in examples
-    ))
+    dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
+        wandb.config.data_dir,
+        lm=False,
+        freq_cutoff=2,
+    )
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
 
