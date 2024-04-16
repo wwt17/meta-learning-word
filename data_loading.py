@@ -248,15 +248,29 @@ def dataset_stats(
         sentence_stats(get_lm_data_sentences(data), tokenizer, path, f"lm sentence length {split} distribution", length_range=length_range)
 
 
+def tokenized_text(tokenizer, text, skip_special_tokens=True, **kwargs):
+    encoding = tokenizer(text)
+    return tokenizer.decode(
+        encoding["input_ids"],
+        skip_special_tokens=skip_special_tokens,
+        **kwargs
+    )
+
+
 def interactive_classification(
         data: datasets.Dataset,
         n_class: int,
         n_study_examples: int,
         max_sample_times: int,
+        tokenizer: Optional[PreTrainedTokenizerFast] = None,
         seed: Optional[int] = None,
 ):
     np.random.seed(seed)
     rng = np.random.default_rng(seed=seed)
+
+    _example_str = example_str
+    if tokenizer is not None:
+        _example_str = lambda example: tokenized_text(tokenizer, example_str(example))
 
     n_episodes = 0
     while True:
@@ -270,14 +284,14 @@ def interactive_classification(
                     word, examples = item["word"], item["examples"]
                     print(f"word #{idx+1}:")
                     for j, example in enumerate(examples[:-1]):
-                        sent = example_str(example)
+                        sent = _example_str(example)
                         print(4*" " + f"example #{j+1}: " + sent)
                 indices = list(range(batch_size))
                 np.random.shuffle(indices) # type: ignore
                 print("predict:")
                 for i, idx in enumerate(indices):
                     example = word_examples_batch[idx]["examples"][-1]
-                    sent = example_str(example)
+                    sent = _example_str(example)
                     print(f"{i+1}. " + sent)
 
                 while True:
@@ -316,7 +330,16 @@ if __name__ == "__main__":
              "In class mode, should be the json file containing the split."
     )
     argparser.add_argument(
-        "--freq_cutoff", type=int, default=2,
+        "--split",
+        default="train",
+        help="Which split to use in classification mode."
+    )
+    argparser.add_argument(
+        "--tokenize", action="store_true",
+        help="Tokenize the text in classification mode."
+    )
+    argparser.add_argument(
+        "--freq_cutoff", type=int, default=0,
         help="Remove words with frequency <= freq_cutoff from the vocabulary."
     )
     argparser.add_argument(
@@ -341,17 +364,24 @@ if __name__ == "__main__":
     )
     args = argparser.parse_args()
 
+    meta_dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
+        args.data,
+        freq_cutoff = args.freq_cutoff,
+        exclude_meta_words = not args.include_meta_words,
+    )
+
     if args.mode == "stat":
-        meta_dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
-            args.data,
-            freq_cutoff = args.freq_cutoff,
-            exclude_meta_words = not args.include_meta_words,
-        )
         dataset_stats(meta_dataset, lm_dataset, tokenizer, args.data)
 
     elif args.mode == "class":
-        data = load_meta_dataset(args.data)
-        interactive_classification(data, args.n_class, args.n_study_examples, args.max_sample_times, args.seed)
+        interactive_classification(
+            meta_dataset[args.split],
+            args.n_class,
+            args.n_study_examples,
+            args.max_sample_times,
+            tokenizer = tokenizer if args.tokenize else None,
+            seed = args.seed,
+        )
 
     else:
         raise Exception(f"Unknown mode {args.mode}")
