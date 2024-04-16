@@ -19,9 +19,10 @@ from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOK
 
 def get_meta_data_sentences(
         data: datasets.Dataset,
+        raw: bool = False,
 ):
     return (
-        example["sentence"]
+        example["sentence"] if raw else example_str(example)
         for examples in data["examples"]
         for example in examples
     )
@@ -148,7 +149,7 @@ def load_dataset_and_tokenizer(
         split: load_meta_dataset(Path(dataset_dir, f"meta.{split}.json"))
         for split in splits
     })
-    sentences = get_meta_data_sentences(meta_dataset["train"])
+    sentences = get_meta_data_sentences(meta_dataset["train"], raw=True)
     if lm:
         lm_dataset: datasets.DatasetDict = datasets.load_dataset(
             str(dataset_dir),
@@ -233,13 +234,13 @@ def dataset_stats(
         tokenizer: PreTrainedTokenizerFast,
         path,
         length_range=(0, 50),
-        n_uses_range=(5, 30),
+        n_uses_range=(5, 100),
 ):
     print("meta data:")
     for split, data in meta_dataset.items():
         print(f"{split} split:")
         uses_stats(data, path, f"meta learning word n_uses {split} distribution", n_uses_range=n_uses_range)
-        sentence_stats(get_meta_data_sentences(data), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
+        sentence_stats(get_meta_data_sentences(data, raw=False), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
 
     print("lm data:")
     for split, data in lm_dataset.items():

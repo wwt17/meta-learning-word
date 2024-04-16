@@ -452,8 +452,8 @@ if __name__ == "__main__":
             np.arange(len(y)), y,
             hue=hue, palette=palette,
             x_tick_step=len(y)//20,
-            y_max=y[len(y)//10],
-            y_tick_step=2,
+            y_max=y[len(y)//20],
+            y_tick_step=5,
             legend=True,
             ax=ax,
         )
