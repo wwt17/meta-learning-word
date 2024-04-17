@@ -233,8 +233,8 @@ def dataset_stats(
         lm_dataset: datasets.DatasetDict,
         tokenizer: PreTrainedTokenizerFast,
         path,
-        length_range=(0, 50),
-        n_uses_range=(5, 100),
+        length_range=None,
+        n_uses_range=None,
 ):
     print("meta data:")
     for split, data in meta_dataset.items():
@@ -347,6 +347,14 @@ if __name__ == "__main__":
         help="Include words for meta learning in the vocabulary."
     )
     argparser.add_argument(
+        "--length_range", type=int, nargs=2, default=(0, 50),
+        help="Plot length distribution range."
+    )
+    argparser.add_argument(
+        "--n_uses_range", type=int, nargs=2, default=(5, 100),
+        help="Plot n_uses distribution range."
+    )
+    argparser.add_argument(
         "--n_class", type=int, default=2,
         help="Number of words to classify, i.e., n-way classification."
     )
@@ -371,7 +379,11 @@ if __name__ == "__main__":
     )
 
     if args.mode == "stat":
-        dataset_stats(meta_dataset, lm_dataset, tokenizer, args.data)
+        dataset_stats(
+            meta_dataset, lm_dataset, tokenizer, args.data,
+            length_range = args.length_range,
+            n_uses_range = args.n_uses_range,
+        )
 
     elif args.mode == "class":
         interactive_classification(
