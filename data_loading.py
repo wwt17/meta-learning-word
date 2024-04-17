@@ -143,6 +143,7 @@ def load_dataset_and_tokenizer(
         splits = ["train", "validation", "test"],
         freq_cutoff: int = 0,
         exclude_meta_words: bool = True,
+        exclude_tokens: Iterable[str] = ["xxx"],
         cache_tokenizer: bool = False,
 ):
     meta_dataset = datasets.DatasetDict({
@@ -161,10 +162,12 @@ def load_dataset_and_tokenizer(
     else:
         lm_dataset = None  # type: ignore
     if exclude_meta_words:
-        exclude_tokens = chain.from_iterable(
-            (data["word"] for split, data in meta_dataset.items()))
-    else:
-        exclude_tokens = set()
+        exclude_tokens = chain(
+            exclude_tokens,
+            chain.from_iterable(
+                (data["word"] for split, data in meta_dataset.items())
+            )
+        )
     _get_tokenizer = get_tokenizer
     if cache_tokenizer:
         _get_tokenizer = tokenizer_cache(Path(dataset_dir, "tokenizer"))(_get_tokenizer)
