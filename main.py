@@ -18,9 +18,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, set_seed
-from utils import frac_repr, to, example_str, concat_examples
-from data_loading import load_dataset_and_tokenizer, sample_examples
-from evaluation_cls import construct_cls_example, cls_collate_fn, evaluate_cls
+from utils import frac_repr, to, example_str, concat_examples, mix_iter
+from data_loading import load_dataset_and_tokenizer, sample_examples, sample_lm_seq
+from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
 from concat_lm_dataset import ConcatLMDataset
 
 
@@ -34,7 +34,7 @@ def save_checkpoint(ckpt_path, model, optimizer, scheduler):
     torch.save(scheduler.state_dict(), ckpt_path/"scheduler.pt")
 
 
-def construct_lm_example(item, **kwargs):
+def construct_meta_lm_example(item, **kwargs):
     return {"examples": concat_examples(item["examples"], **kwargs)}
 
 
@@ -66,10 +66,10 @@ def main(project="meta-learning-word", **kwargs):
     if wandb.config.seed is not None:
         set_seed(wandb.config.seed)
 
-    dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
+    meta_dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
         wandb.config.data_dir,
-        lm=False,
-        freq_cutoff=2,
+        lm=wandb.config.lm,
+        freq_cutoff=wandb.config.freq_cutoff,
         cache_tokenizer=True,
     )
 
@@ -98,47 +98,84 @@ def main(project="meta-learning-word", **kwargs):
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
     _kwargs = dict()
-    _construct_lm_example = construct_lm_example
-    _construct_cls_example = construct_cls_example
+    _construct_meta_lm_example = construct_meta_lm_example
+    _construct_meta_cls_example = construct_meta_cls_example
     if wandb.config.no_new_token:
         _kwargs.update(dict(t=None))
-        _construct_lm_example = partial(_construct_lm_example, **_kwargs)
-        _construct_cls_example = partial(_construct_cls_example, **_kwargs)
+        _construct_meta_lm_example = partial(_construct_meta_lm_example, **_kwargs)
+        _construct_meta_cls_example = partial(_construct_meta_cls_example, **_kwargs)
 
     step = 0
     logging_loss, logging_n_tokens = 0., 0
-    val_ind_dataset = sample_examples(
-        dataset["validation"],
+
+    def build_lm_dataloader(
+            dataset,
+            batch_size,
+            drop_last=False,
+            shuffle=True,
+            seed=None,
+            n_examples=wandb.config.n_examples,
+    ):
+        if shuffle:
+            dataset = dataset.shuffle(seed=seed)
+        dataset = sample_lm_seq(
+            dataset,
+            n_examples,
+        )
+        dataset = dataset.map(
+            lambda batch: tokenizer(batch["examples"]),
+            batched=True,
+            remove_columns=["examples"],
+        )
+        dataloader = DataLoader(
+            dataset, # type: ignore
+            batch_size=batch_size,
+            shuffle=False,  # no need to shuffle the sequences again
+            drop_last=drop_last,
+            collate_fn=collator,
+        )
+        return dataloader
+
+    if wandb.config.lm:
+        val_lm_dataloader = build_lm_dataloader(
+            lm_dataset["validation"],
+            wandb.config.eval_batch_size,
+            seed=wandb.config.eval_seed,
+        )
+    else:
+        val_lm_dataloader = None
+    val_meta_ind_dataset = sample_examples(
+        meta_dataset["validation"],
         wandb.config.n_examples,
         max_sample_times=args.max_sample_times,
         rng=np.random.default_rng(wandb.config.eval_seed)
     )
-    val_unique_dataset = sample_examples(
-        dataset["validation"],
+    val_meta_unique_dataset = sample_examples(
+        meta_dataset["validation"],
         wandb.config.n_examples,
         max_sample_times=1,  # ensure different words in a classification batch
         rng=np.random.default_rng(wandb.config.eval_seed)
     )
-    val_ind_lm_dataset = val_ind_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-    val_ind_lm_dataloader = DataLoader(
-        val_ind_lm_dataset, # type: ignore
+    val_meta_ind_lm_dataset = val_meta_ind_dataset.map(_construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+    val_meta_ind_lm_dataloader = DataLoader(
+        val_meta_ind_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
         shuffle=False,
         drop_last=False,
         collate_fn=collator,
     )
-    val_unique_lm_dataset = val_unique_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-    val_unique_lm_dataloader = DataLoader(
-        val_unique_lm_dataset, # type: ignore
+    val_meta_unique_lm_dataset = val_meta_unique_dataset.map(_construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+    val_meta_unique_lm_dataloader = DataLoader(
+        val_meta_unique_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
         shuffle=False,
         drop_last=False,
         collate_fn=collator,
     )
-    val_cls_dataset = val_unique_dataset.map(_construct_cls_example)
-    val_cls_dataloaders = {
+    val_meta_cls_dataset = val_meta_unique_dataset.map(_construct_meta_cls_example)
+    val_meta_cls_dataloaders = {
         n_classes: DataLoader(
-            val_cls_dataset, # type: ignore
+            val_meta_cls_dataset, # type: ignore
             batch_size=n_classes,
             shuffle=False,
             drop_last=True,
@@ -148,77 +185,94 @@ def main(project="meta-learning-word", **kwargs):
     }
     wandb.define_metric("val_ind_lm_loss", summary="min")
     wandb.define_metric("val_unique_lm_loss", summary="min")
-    for n_classes in val_cls_dataloaders.keys():
+    for n_classes in val_meta_cls_dataloaders.keys():
         value_name = f"val_cls_{n_classes}_acc"
         wandb.define_metric(value_name, summary="max")
 
-    global best_val_ind_lm_loss
-    best_val_ind_lm_loss = np.inf
+    global best_val_meta_ind_lm_loss
+    best_val_meta_ind_lm_loss = np.inf
     def _evaluate(epoch: int):
-        global best_val_ind_lm_loss
+        global best_val_meta_ind_lm_loss
         model.eval()
 
         wandb.log({"epoch": epoch}, step=step)
 
-        val_ind_lm_loss = evaluate_lm(model, val_ind_lm_dataloader, loss_fct)
-        print(f"{val_ind_lm_loss=:.6f}")
-        wandb.log({"val_ind_lm_loss": val_ind_lm_loss}, step=step)
-        if best_val_ind_lm_loss > val_ind_lm_loss:
-            best_val_ind_lm_loss = val_ind_lm_loss
+        if wandb.config.lm:
+            val_lm_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
+            print(f"{val_lm_loss=:.6f}")
+            wandb.log({"val_lm_loss": val_lm_loss}, step=step)
+
+        val_meta_ind_lm_loss = evaluate_lm(model, val_meta_ind_lm_dataloader, loss_fct)
+        print(f"{val_meta_ind_lm_loss=:.6f}")
+        wandb.log({"val_ind_lm_loss": val_meta_ind_lm_loss}, step=step)
+        if best_val_meta_ind_lm_loss > val_meta_ind_lm_loss:
+            best_val_meta_ind_lm_loss = val_meta_ind_lm_loss
             save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "best"), model, optimizer, scheduler)
 
-        val_unique_lm_loss = evaluate_lm(model, val_unique_lm_dataloader, loss_fct)
-        print(f"{val_unique_lm_loss=:.6f}")
-        wandb.log({"val_unique_lm_loss": val_unique_lm_loss}, step=step)
+        val_meta_unique_lm_loss = evaluate_lm(model, val_meta_unique_lm_dataloader, loss_fct)
+        print(f"{val_meta_unique_lm_loss=:.6f}")
+        wandb.log({"val_unique_lm_loss": val_meta_unique_lm_loss}, step=step)
 
-        for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
+        for n_classes, val_meta_cls_dataloader in val_meta_cls_dataloaders.items():
             value_name = f"val_cls_{n_classes}_acc"
-            val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
+            val_cls_acc = evaluate_cls(model, val_meta_cls_dataloader, raw_loss_fct)
             print(f"{value_name}={val_cls_acc:.3%}")
             wandb.log({value_name: val_cls_acc}, step=step)
 
-        scheduler.step(val_ind_lm_loss, epoch=epoch)
+        scheduler.step(val_meta_ind_lm_loss, epoch=epoch)
         wandb.log({"lr": scheduler._last_lr[0]}, step=step) # type: ignore
 
     _evaluate(0)
 
+    print(f'original train meta_dataset size: #episodes: {len(meta_dataset["train"])} #examples: {sum(map(len, meta_dataset["train"]["examples"]))}')
     for epoch_i in range(wandb.config.n_epochs):
         print(f"Epoch {epoch_i}:")
-        print(f'original train dataset size: #episodes: {len(dataset["train"])} #examples: {sum(map(len, dataset["train"]["examples"]))}')
-        train_dataset = sample_examples(
-            dataset["train"],
+        train_meta_dataset = sample_examples(
+            meta_dataset["train"],
             wandb.config.n_examples,
             max_sample_times=wandb.config.max_sample_times,
         )
-        print(f'train dataset size: #episodes: {len(train_dataset)} #examples: {sum(map(len, train_dataset["examples"]))}')
+        print(f'train meta_dataset size: #episodes: {len(train_meta_dataset)} #examples: {sum(map(len, train_meta_dataset["examples"]))}')
         if args.concat:
             print("Concatenate all examples")
-            train_dataset = sample_examples(train_dataset, 1, rng=None)  # flatten examples
-            train_dataset = train_dataset.map(partial(_construct_lm_example, start_with_sep=False))
-            train_dataset = train_dataset.map(lambda batch: tokenizer(batch["examples"]), batched=True)
-            train_dataset = np.fromiter(chain.from_iterable(train_dataset["input_ids"]), int)  # concatenate token ids
+            train_meta_dataset = sample_examples(train_meta_dataset, 1, rng=None)  # flatten examples
+            train_meta_dataset = train_meta_dataset.map(partial(_construct_meta_lm_example, start_with_sep=False))
+            train_meta_dataset = train_meta_dataset.map(lambda batch: tokenizer(batch["examples"]), batched=True)
+            train_meta_dataset = np.fromiter(chain.from_iterable(train_meta_dataset["input_ids"]), int)  # concatenate token ids
             context_length = wandb.config.context_length
-            train_dataset = ConcatLMDataset(
-                train_dataset,
+            train_meta_dataset = ConcatLMDataset(
+                train_meta_dataset,
                 context_length,
                 offset=np.random.randint(context_length),
             )
-            train_dataloader = DataLoader(
-                train_dataset,
+            train_meta_dataloader = DataLoader(
+                train_meta_dataset,
                 batch_size=wandb.config.batch_size,
                 shuffle=True,
                 drop_last=True,
                 collate_fn=concat_lm_collate,
             )
+            train_lm_dataloader = None  # TODO: implement train_lm_dataloader
         else:
-            train_dataset = train_dataset.map(_construct_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True).remove_columns(["word", "examples"])
-            train_dataloader = DataLoader(
-                train_dataset, # type: ignore
+            train_meta_dataset = train_meta_dataset.map(_construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+            train_meta_dataloader = DataLoader(
+                train_meta_dataset, # type: ignore
                 batch_size=wandb.config.batch_size,
                 shuffle=True,
                 drop_last=True,
                 collate_fn=collator,
             )
+            if wandb.config.lm:
+                train_lm_dataloader = build_lm_dataloader(
+                    lm_dataset["train"],
+                    wandb.config.batch_size,
+                    drop_last=True,
+                )
+            else:
+                train_lm_dataloader = None
+        train_dataloader = train_meta_dataloader
+        if train_lm_dataloader is not None:
+            train_dataloader = mix_iter(train_dataloader, train_lm_dataloader)
 
         total_loss, total_n_tokens = 0., 0
         model.train()
@@ -276,6 +330,10 @@ if __name__ == "__main__":
         help="pretrained_model_name_or_path for AutoConfig."
     )
     argparser.add_argument(
+        "--lm", action="store_true",
+        help="Do language modeling as an objective."
+    )
+    argparser.add_argument(
         "--concat", action="store_true",
         help="Train LM on concatenated text."
     )
@@ -286,6 +344,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--no_new_token", action="store_true",
         help="Do not replace the word with the new token."
+    )
+    argparser.add_argument(
+        "--freq_cutoff", type=int, default=4,
+        help="Exclude tokens with frequency <= freq_cutoff from the vocabulary."
     )
     argparser.add_argument(
         "--n_epochs", type=int, default=80,

@@ -186,5 +186,35 @@ def example_str(example, t: Optional[str] = NEW_TOKEN) -> str:
     return s
 
 
+def concat_strs(strs: Iterable[str], sep: str = SEP_TOKEN, space: str = " ", start_with_sep=True) -> str:
+    return (sep + space if start_with_sep else "") + space.join((s + space + sep for s in strs))
+
+
 def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: Optional[str] = NEW_TOKEN, start_with_sep=True) -> str:
-    return (sep + space if start_with_sep else "") + space.join((example_str(example, t=t) + space + sep for example in examples))
+    return concat_strs(
+        (example_str(example, t=t) for example in examples),
+        sep=sep, space=space, start_with_sep=start_with_sep,
+    )
+
+
+def mix_iter(*iters):
+    its = []
+    n = []
+    for it in iters:
+        n_it = len(it)
+        if n_it:
+            its.append(iter(it))
+            n.append(n_it)
+    if not its:
+        return
+    n_left = n[:]
+    while True:
+        max_left_i = 0
+        for i in range(len(iters)):
+            if n_left[i] * n[max_left_i] > n_left[max_left_i] * n[i]:
+                max_left_i = i
+        if n_left[max_left_i] > 0:
+            n_left[max_left_i] -= 1
+            yield next(its[max_left_i])
+        else:
+            break

@@ -12,7 +12,7 @@ import seaborn as sns
 import datasets
 import tokenizers
 from transformers import PreTrainedTokenizerFast
-from utils import frac_repr, zipdict, batchify, cache, example_str
+from utils import frac_repr, zipdict, batchify, cache, example_str, concat_strs
 from data_processing import count_tokens, sorted_counter_dict
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 
@@ -127,6 +127,31 @@ def sample_examples(
         return ret
 
     return data.map(_get_samples, batched=True)
+
+
+def sample_lm_seq(
+        data: datasets.Dataset,
+        n: int,
+        drop_last: bool = True,
+        source_column_name: str = "sentence",
+        target_column_name: str = "examples",
+):
+    """Concatenate every n sentences (rows) into one sequence (row) for 
+    language modeling.
+    Args:
+        data: a Dataset containing a column with column_name, which contains 
+        a sentence per row.
+        n: Number of sentences to be grouped into a batch for a sequence.
+        drop_last: Whether to drop the last batch smaller than n.
+    """
+    def _concat_sentence_batch(batch):
+        return {target_column_name: [concat_strs(batch[source_column_name])]}
+
+    return data.map(
+        _concat_sentence_batch,
+        batched=True, batch_size=n, drop_last_batch=drop_last,
+        remove_columns=source_column_name,
+    )
 
 
 def load_meta_dataset(data_path):

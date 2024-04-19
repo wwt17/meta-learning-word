@@ -14,7 +14,8 @@ from text_configs import NEW_TOKEN, SEP_TOKEN
 from utils import map_structure, to, get_device, example_str, concat_examples
 
 
-def construct_cls_example(item, sep=SEP_TOKEN, space=" ", t=NEW_TOKEN, prompt=""):
+def construct_meta_cls_example(item, sep=SEP_TOKEN, space=" ", t=NEW_TOKEN, prompt=""):
+    # TODO: shuffle & sample from the examples
     return {
         "prefix": prompt + concat_examples(item["examples"][:-1], sep=sep, space=space, t=t),
         "suffix": space + example_str(item["examples"][-1], t=t) + space + sep,

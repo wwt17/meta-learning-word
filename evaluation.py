@@ -16,8 +16,8 @@ import tokenizers
 import transformers
 from transformers import AutoTokenizer, PreTrainedTokenizerFast, GPT2TokenizerFast, AutoModelForCausalLM, set_seed
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
-from data_loading import load_dataset, sample_examples
-from evaluation_cls import construct_cls_example, cls_collate_fn, evaluate_cls
+from data_loading import load_meta_dataset, sample_examples
+from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
 from main import device
 
 
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
     dataset = datasets.DatasetDict({
-        split: load_dataset(Path(args.data_dir, f"{split}.json"))
+        split: load_meta_dataset(Path(args.data_dir, f"{split}.json"))
         for split in ["train", "validation", "test"]
     })
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         max_sample_times=args.max_sample_times,
         rng=np.random.default_rng(args.seed),
     )
-    val_cls_dataset = val_dataset.map(partial(construct_cls_example, **fmt_kwargs))
+    val_cls_dataset = val_dataset.map(partial(construct_meta_cls_example, **fmt_kwargs))
     val_cls_dataloaders = {
         n_classes: DataLoader(
             val_cls_dataset, # type: ignore
