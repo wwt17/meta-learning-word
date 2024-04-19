@@ -8,4 +8,4 @@ __pycache__/
 /*.pdf
 /*.png
 /babylm_data
-/childes
+/childes*
