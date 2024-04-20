@@ -84,8 +84,10 @@ def main(project="meta-learning-word", **kwargs):
     n_ctx_attr = {
         GPT2Config: "n_ctx",
     }[type(config)]
+    model_max_length = getattr(config, n_ctx_attr)
+    tokenizer.model_max_length = model_max_length  # TODO: have effect only when calling tokenizer(..., truncation=True)
     if wandb.config.context_length is None:
-        wandb.config.update(dict(context_length=getattr(config, n_ctx_attr)), allow_val_change=True)
+        wandb.config.update(dict(context_length=model_max_length), allow_val_change=True)
     model = AutoModelForCausalLM.from_config(config).to(device)
     print("model config:")
     print(model.config)
