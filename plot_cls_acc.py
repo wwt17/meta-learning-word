@@ -16,12 +16,12 @@ sns.set_theme(style="whitegrid", rc=rc)
 
 result_files = [
     {
-        n_examples: f"ckpt/meta-word_data_dir_word_use_data_clean:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data_clean:childes:word_n_examples_{n_examples}/slurm.out"
-        for n_examples in range(3, 11)
+        n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
+        for n_examples in range(4, 11)
     },
     {
-        n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data_clean:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
-        for n_examples in range(3, 11)
+        n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
+        for n_examples in range(4, 11)
     }
 ][0]
 

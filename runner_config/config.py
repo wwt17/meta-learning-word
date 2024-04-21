@@ -1,7 +1,7 @@
 grids = [
     {
         "main_file": ["main.py"],
-        "data_dir": ["word_use_data/childes/word", "word_use_data/ptb_text_only/word"][:1],
+        "data_dir": ["word_use_data/childes/word", "word_use_data/babylm_data/babylm_10M/word", "word_use_data/ptb_text_only/word"][0:1],
         "config": ["gpt2"],
         "lm": [True],
         "concat": [False, True][:1],
@@ -14,7 +14,7 @@ grids = [
         "max_sample_times": [0],
         "eval_n_classes": [tuple(range(2, 7))],
         "loss_reduction": ["sum"],
-        "lr": [1e-3, 3e-4, 1e-4, 3e-5, 1e-5],
+        "lr": [1e-3, 3e-4, 1e-4, 3e-5, 1e-5][2:3],
         "weight_decay": [0.15, 0.12, 0.10, 0.07, 0.05][1:2],
         "factor": [0.1],
         "patience": [2],

@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
     dataset = datasets.DatasetDict({
-        split: load_meta_dataset(Path(args.data_dir, f"{split}.json"))
+        split: load_meta_dataset(Path(args.data_dir, f"meta.{split}.json"))
         for split in ["train", "validation", "test"]
     })
 
