@@ -2,7 +2,7 @@ grids = [
     {
         "main_file": ["main.py"],
         "data_dir": ["word_use_data/childes/word", "word_use_data/babylm_data/babylm_10M/word", "word_use_data/ptb_text_only/word"][0:1],
-        "config": ["gpt2", "model_config/pythia-70m"][1:2],
+        "config": ["gpt2", "model_config/pythia-70m", "model_config/pythia-160m"][2:3],
         "lm": [True],
         "concat": [False, True][:1],
         #"context_length": [128],
