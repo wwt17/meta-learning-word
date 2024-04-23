@@ -17,7 +17,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
-from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, set_seed
+from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
 from utils import frac_repr, to, example_str, concat_examples, mix_iter
 from data_loading import load_dataset_and_tokenizer, sample_examples, sample_lm_seq
 from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
@@ -60,6 +60,12 @@ def concat_lm_collate(batch):
     }
 
 
+model_max_length_attr = {
+    GPT2Config: "n_ctx",
+    GPTNeoXConfig: "max_position_embeddings",
+}
+
+
 def main(project="meta-learning-word", **kwargs):
     wandb.init(project=project, **kwargs)
 
@@ -81,10 +87,7 @@ def main(project="meta-learning-word", **kwargs):
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
-    n_ctx_attr = {
-        GPT2Config: "n_ctx",
-    }[type(config)]
-    model_max_length = getattr(config, n_ctx_attr)
+    model_max_length = getattr(config, model_max_length_attr[type(config)])
     tokenizer.model_max_length = model_max_length  # TODO: have effect only when calling tokenizer(..., truncation=True)
     if wandb.config.context_length is None:
         wandb.config.update(dict(context_length=model_max_length), allow_val_change=True)
