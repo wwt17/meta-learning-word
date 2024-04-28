@@ -296,9 +296,13 @@ if __name__ == "__main__":
         help="Do not deduplicate sentences in the dataset."
     )
     argparser.add_argument(
-        "--remove_sents_less_than_n_words", type=int, default=1,
+        "--remove_sents_less_than_n_words", type=int,
         help="Remove sentences with less than this number of words (excluding "
              "punctuations)."
+    )
+    argparser.add_argument(
+        "--remove_sents_longer_than_n_tokens", type=int,
+        help="Remove sentences longer than this number of tokens."
     )
     argparser.add_argument(
         "--split_ratio", type=float, nargs="+", default=[8, 1, 1],
@@ -359,12 +363,25 @@ if __name__ == "__main__":
         print(f"{frac_repr(len(new_dataset), len(dataset))} left")
         dataset = new_dataset
 
-    if args.remove_sents_less_than_n_words:
-        # remove sentences <= N words (excluding punctuations)
-        print(f"removing sentences <= {args.remove_sents_less_than_n_words} words (excluding punctuations)...")
+    if args.remove_sents_less_than_n_words is not None:
+        # remove sentences with <= N words (excluding punctuations)
+        print(f"removing sentences with <={args.remove_sents_less_than_n_words} words (excluding punctuations)...")
         def _more_than_n_words(example):
             return sum(((pos not in args.punc_pos) for pos in example["pos_tags"])) > args.remove_sents_less_than_n_words
         new_dataset = dataset.filter(_more_than_n_words)
+        print(f"{frac_repr(len(new_dataset), len(dataset))} left")
+        dataset = new_dataset
+
+    if args.remove_sents_longer_than_n_tokens is not None:
+        # remove sentences with > N tokens
+        print(f"removing sentences with >{args.remove_sents_longer_than_n_tokens} tokens...")
+        def _leq_n_tokens(example):
+            length = len(example["pos_tags"])
+            ok = length <= args.remove_sents_longer_than_n_tokens
+            if not ok:
+                print(f"Remove sentence with {length=}: {example['sentence']}")
+            return ok
+        new_dataset = dataset.filter(_leq_n_tokens)
         print(f"{frac_repr(len(new_dataset), len(dataset))} left")
         dataset = new_dataset
 

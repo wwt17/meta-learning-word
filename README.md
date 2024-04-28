@@ -27,11 +27,11 @@ where `${BABYLM_DATA_PATH}` is the path to the BabyLM split, such as `babylm_dat
 #### CHILDES
 
 ```bash
-python data_processing.py --dataset ${CHILDES_DATA_PATH} --lower --plot_word_frequency --plot_pos --min_n_examples 5 --max_freq 200 --seed 0 --word_use_data_dir word_use_data
+python data_processing.py --dataset ${CHILDES_DATA_PATH} --lower --remove_sents_less_than_n_words 1 --plot_word_frequency --plot_pos --min_n_examples 5 --max_freq 200 --seed 0 --word_use_data_dir word_use_data
 ```
 
 #### BabyLM
 
 ```bash
-python data_processing.py --dataset ${BABYLM_DATA_PATH} --lower --plot_word_frequency --plot_pos --min_n_examples 5 --max_freq 15 --seed 0 --word_use_data_dir word_use_data
+python data_processing.py --dataset ${BABYLM_DATA_PATH} --lower --remove_sents_less_than_n_words 1 --remove_sents_longer_than_n_tokens 70 --plot_word_frequency --plot_pos --min_n_examples 5 --max_freq 15 --seed 0 --word_use_data_dir word_use_data
 ```

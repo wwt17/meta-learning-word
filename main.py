@@ -283,7 +283,16 @@ def main(project="meta-learning-word", **kwargs):
         model.train()
         for batch in train_dataloader:
             batch = to(batch, device)
-            outputs = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+            try:
+                outputs = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+            except:
+                input_ids = batch["input_ids"]
+                print(f"{input_ids.shape=}")
+                decoded_input = tokenizer.batch_decode(input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+                print("input:")
+                for s in decoded_input:
+                    print(s)
+                raise
             loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
             loss.backward()
             optimizer.step()
