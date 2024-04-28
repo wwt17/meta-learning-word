@@ -23,7 +23,11 @@ from utils import frac_repr, normalize_dict, cache, get_pos_tags, plot_bar, repl
 from pos_tags import extend_pos, pos_mappings
 from plotting import palette
 from text_configs import NEW_TOKEN
+from thinc.api import set_gpu_allocator, require_gpu
 
+
+set_gpu_allocator("pytorch")
+require_gpu()
 
 nlp = spacy.load("en_core_web_trf", exclude=["parser", "attribute_ruler", "lemmatizer", "ner"])
 
