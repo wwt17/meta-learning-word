@@ -24,12 +24,18 @@ from pos_tags import extend_pos, pos_mappings
 from plotting import palette
 from text_configs import NEW_TOKEN
 from thinc.api import set_gpu_allocator, require_gpu
+import locale
 
 
-set_gpu_allocator("pytorch")
-require_gpu()
+use_gpu_for_spacy_model = False
+if use_gpu_for_spacy_model:
+    set_gpu_allocator("pytorch")
+    require_gpu()
 
 nlp = spacy.load("en_core_web_trf", exclude=["parser", "attribute_ruler", "lemmatizer", "ner"])
+
+if use_gpu_for_spacy_model:
+    locale.getencoding = lambda: 'UTF-8'  # attempt to fix a bug of CUDA, see https://github.com/explosion/spaCy/issues/11909 (but still not working when saving the data)
 
 def nlp_tokenizer(sentence, keep_original_spaces=False):
     word_offsets = pre_tokenizer.pre_tokenize_str(sentence)
