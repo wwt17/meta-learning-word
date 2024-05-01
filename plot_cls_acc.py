@@ -1,3 +1,4 @@
+import argparse
 import re
 import numpy as np
 import pandas as pd
@@ -5,60 +6,79 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-rc = {
-    "axes.spines.right": False,
-    "axes.spines.top": False,
-    "legend.fontsize": 8,
-    "legend.title_fontsize": 9,
-}
-sns.set_theme(style="whitegrid", rc=rc)
+def plot_cls_acc(result_files, title):
+    n_classes = None
+    accuracies = {}
+
+    for n_examples, result_file in result_files.items():
+        with open(result_file, "r") as f:
+            n_classes_, accuracies_ = [], []
+            for line in f:
+                match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
+                if match is None:
+                    break
+                n_cls, accuracy = int(match.group(1)), float(match.group(2))
+                n_classes_.append(n_cls)
+                accuracies_.append(accuracy)
+        if n_classes is None:
+            n_classes = n_classes_
+        else:
+            assert n_classes == n_classes_
+        accuracies[n_examples] = accuracies_
+
+    n_classes = np.array(n_classes)
+    df = pd.DataFrame(accuracies, index=n_classes)
+    df.index.name = "#classes"
+    df.columns.name = "#examples"
+
+    palette = sns.color_palette("husl", len(df.columns))
+
+    df["chance"] = df.index.map(lambda c: 100/c)
+    palette.append((0., 0., 0.))
+
+    dashes = {column: {"chance": (1, 1)}.get(column, "") for column in df.columns}
+    ax = sns.lineplot(df, palette=palette, dashes=dashes)
+    ax.set_xticks(n_classes)
+    ax.set_ylabel("Accuracy (%)")
+    ax.set_ylim(bottom=0, top=100)
+    ax.set_title(title)
 
 
-result_files = [
-    {
-        n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
-        for n_examples in range(4, 11)
-    },
-    {
-        n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
-        for n_examples in range(4, 11)
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("--title", default="Classification Accuracy")
+    argparser.add_argument("--out")
+    args = argparser.parse_args()
+    if args.title is not None:
+        args.out = args.title + ".png"
+
+    rc = {
+        "axes.spines.right": False,
+        "axes.spines.top": False,
+        "legend.fontsize": 8,
+        "legend.title_fontsize": 9,
     }
-][0]
+    sns.set_theme(style="whitegrid", rc=rc)
 
-n_classes = None
-accuracies = {}
+    result_files = [
+        {
+            n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(4, 11)
+        },
+        {
+            n_examples: f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(4, 11)
+        },
+        {
+            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(4, 11)
+        },
+        {
+            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(4, 11)
+        },
+    ][1]
 
-for n_examples, result_file in result_files.items():
-    with open(result_file, "r") as f:
-        n_classes_, accuracies_ = [], []
-        for line in f:
-            match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
-            if match is None:
-                break
-            n_cls, accuracy = int(match.group(1)), float(match.group(2))
-            n_classes_.append(n_cls)
-            accuracies_.append(accuracy)
-    if n_classes is None:
-        n_classes = n_classes_
-    else:
-        assert n_classes == n_classes_
-    accuracies[n_examples] = accuracies_
+    plot_cls_acc(result_files, args.title)
 
-n_classes = np.array(n_classes)
-df = pd.DataFrame(accuracies, index=n_classes)
-df.index.name = "#classes"
-df.columns.name = "#examples"
-
-palette = sns.color_palette("husl", len(df.columns))
-
-df["chance"] = df.index.map(lambda c: 100/c)
-palette.append((0., 0., 0.))
-
-dashes = {column: {"chance": (1, 1)}.get(column, "") for column in df.columns}
-ax = sns.lineplot(df, palette=palette, dashes=dashes)
-ax.set_xticks(n_classes)
-ax.set_ylabel("Accuracy (%)")
-ax.set_ylim(bottom=0, top=100)
-ax.set_title("Classification Accuracy")
-
-plt.savefig("classification_accuracies.png", transparent=True, dpi=1000)  # type: ignore
+    plt.savefig(args.out, transparent=True, dpi=1000)
