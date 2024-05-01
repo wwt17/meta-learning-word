@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import datasets
 import tokenizers
 import transformers
-from transformers import AutoTokenizer, PreTrainedTokenizerFast, GPT2TokenizerFast, AutoModelForCausalLM, set_seed
+from transformers import AutoTokenizer, PreTrainedTokenizerFast, AutoModelForCausalLM, set_seed
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 from data_loading import load_meta_dataset, sample_examples
 from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
@@ -112,9 +112,9 @@ if __name__ == "__main__":
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(args.tokenizer) # type: ignore
 
     fmt_kwargs = dict(t = None if args.no_new_token else NEW_TOKEN)
-    if isinstance(tokenizer, GPT2TokenizerFast):
+    if type(tokenizer) is not PreTrainedTokenizerFast:
         fmt_kwargs.update(dict(sep="\n", space="", prompt=""))
-        sep_token_id = 198
+        sep_token_id = tokenizer("\n")['input_ids'][0]  # type: ignore
         tokenizer.pad_token = tokenizer.eos_token
     else:
         # must not provide token_type_ids to the model
