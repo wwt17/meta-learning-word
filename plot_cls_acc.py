@@ -84,15 +84,11 @@ if __name__ == "__main__":
     }
     sns.set_theme(style="whitegrid", rc=rc)
 
-    title = "Pretrained GPT-2 small with simple format on CHILDES"
+    title = "Meta-Trained GPT-2 on CHILDES"
     out = title+".png"
     result_files = {
         "Meta-Trained GPT-2 on CHILDES": {
             n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
-            for n_examples in range(4, 11)
-        },
-        "Pretrained GPT-2 small with simple format on CHILDES": {
-            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
         },
         "Meta-Trained GPT-NeoX on CHILDES": {
@@ -103,13 +99,17 @@ if __name__ == "__main__":
             n_examples: f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
         },
+        "Pretrained GPT-2 small with simple format on CHILDES": {
+            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(2, 11)
+        },
         "Pretrained Pythia-160M with simple format on CHILDES": {
             n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
-            for n_examples in range(4, 11)
+            for n_examples in range(2, 11)
         },
         "Pretrained Pythia-160M with simple format on BabyLM-10M": {
             n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
-            for n_examples in range(4, 11)
+            for n_examples in range(2, 11)
         },
     }[title]
 
