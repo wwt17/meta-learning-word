@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def plot_cls_acc(result_files, title):
+def plot_cls_acc(result_files, title, x_axis="#classes", chance=True, kind="line"):
     n_classes = None
     accuracies = {}
 
@@ -27,30 +27,54 @@ def plot_cls_acc(result_files, title):
         accuracies[n_examples] = accuracies_
 
     n_classes = np.array(n_classes)
+    n_examples = list(result_files.keys())
+    xticks, yticks = n_classes, n_examples
     df = pd.DataFrame(accuracies, index=n_classes)
     df.index.name = "#classes"
     df.columns.name = "#examples"
+    if x_axis == "#examples":
+        df = df.transpose()
+        xticks, yticks = yticks, xticks
 
     palette = sns.color_palette("husl", len(df.columns))
 
-    df["chance"] = df.index.map(lambda c: 100/c)
-    palette.append((0., 0., 0.))
+    if chance:
+        if x_axis == "#examples":
+            df = pd.concat([pd.DataFrame([df.columns.map(lambda c: 100/c)], columns=df.columns, index=[1]), df], ignore_index=False)
+            xticks = [1] + xticks
+        else:
+            df.insert(0, "chance", df.index.map(lambda c: 100/c))
+            palette = [(0., 0., 0.)] + palette
 
-    dashes = {column: {"chance": (1, 1)}.get(column, "") for column in df.columns}
-    ax = sns.lineplot(df, palette=palette, dashes=dashes)
-    ax.set_xticks(n_classes)
-    ax.set_ylabel("Accuracy (%)")
-    ax.set_ylim(bottom=0, top=100)
-    ax.set_title(title)
+    if kind == "line":
+        dashes = {column: {"chance": (1, 1)}.get(column, "") for column in df.columns}
+        ax = sns.lineplot(df, palette=palette, dashes=dashes)
+        ax.set_xticks(xticks)
+        if chance and x_axis == "#examples":
+            ax.set_xlim(xmin=1)
+        ax.set_ylabel("Accuracy (%)")
+        ax.set_ylim(bottom=0, top=100)
+        ax.set_title(title)
+    else:
+        grid = sns.catplot(
+            df.melt(ignore_index=False, value_name="Accuracy (%)").reset_index(),
+            x=x_axis,
+            y="Accuracy (%)",
+            hue=("#examples" if x_axis == "#classes" else "#classes"),
+            palette=palette,
+            kind=kind, #type:ignore
+            facet_kws=dict(
+                ylim=(0, 100)
+            )
+        )
+        grid.fig.subplots_adjust(top=0.9)
+        grid.fig.suptitle(title)
+
 
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("--title", default="Classification Accuracy")
-    argparser.add_argument("--out")
     args = argparser.parse_args()
-    if args.title is not None:
-        args.out = args.title + ".png"
 
     rc = {
         "axes.spines.right": False,
@@ -60,25 +84,35 @@ if __name__ == "__main__":
     }
     sns.set_theme(style="whitegrid", rc=rc)
 
-    result_files = [
-        {
+    title = "Pretrained GPT-2 small with simple format on CHILDES"
+    out = title+".png"
+    result_files = {
+        "Meta-Trained GPT-2 on CHILDES": {
+            n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(4, 11)
+        },
+        "Pretrained GPT-2 small with simple format on CHILDES": {
+            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(4, 11)
+        },
+        "Meta-Trained GPT-NeoX on CHILDES": {
             n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
         },
-        {
+        "Meta-Trained GPT-NeoX on BabyLM-10M": {
             n_examples: f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
         },
-        {
+        "Pretrained Pythia-160M with simple format on CHILDES": {
             n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
         },
-        {
+        "Pretrained Pythia-160M with simple format on BabyLM-10M": {
             n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
         },
-    ][1]
+    }[title]
 
-    plot_cls_acc(result_files, args.title)
+    plot_cls_acc(result_files, title, x_axis="#examples", chance=True, kind="line")
 
-    plt.savefig(args.out, transparent=True, dpi=1000)
+    plt.savefig(out, transparent=True, dpi=1000)
