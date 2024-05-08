@@ -171,17 +171,23 @@ if __name__ == "__main__":
 
             def _print_outputs(
                     outputs,
-                    skip_special_tokens=True,
+                    skip_eos_token=True,
+                    skip_special_tokens=False,
                     clean_up_tokenization_spaces=False,
                     print_top_k_pred=args.print_top_k_pred,
                     **kwargs
             ):
                 assert isinstance(outputs, transformers.utils.ModelOutput), "must set return_dict_in_generate=True"
                 for j, sequence in enumerate(outputs.sequences):  # type: ignore
+                    sequence_length = len(sequence)
+                    while sequence_length > 0 and sequence[sequence_length - 1].item() == tokenizer.pad_token_id:
+                        sequence_length -= 1
+                    if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == model.config.eos_token_id:
+                        sequence_length -= 1
                     print(
                         f"cont. {j}:",
                         tokenizer.decode(
-                            sequence[len(prefix_input.input_ids[0]):],
+                            sequence[len(prefix_input.input_ids[0]):sequence_length],
                             skip_special_tokens=skip_special_tokens,
                             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
                             **kwargs

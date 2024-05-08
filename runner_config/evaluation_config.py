@@ -8,6 +8,7 @@ grids = [
             ],
             "n_examples": [n_examples],
             "eval_n_classes": [tuple(range(2, 11))],
+            "print_decoded_prefix": [True],
         }
         for n_examples in range(4, 11)
     ],
@@ -20,6 +21,7 @@ grids = [
             ],
             "n_examples": [n_examples],
             "eval_n_classes": [tuple(range(2, 11))],
+            "print_decoded_prefix": [True],
         }
         for n_examples in range(4, 11)
     ],
@@ -32,6 +34,7 @@ grids = [
             ],
             "n_examples": [n_examples],
             "eval_n_classes": [tuple(range(2, 11))],
+            "print_decoded_prefix": [True],
         }
         for n_examples in range(4, 11)
     ],
@@ -43,6 +46,7 @@ grids = [
             "pretrained_model": ["gpt2"],
             "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
+            "print_decoded_prefix": [True],
         }
     ],
     [
@@ -53,6 +57,7 @@ grids = [
             "pretrained_model": [r"EleutherAI/pythia-160m"],
             "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
+            "print_decoded_prefix": [True],
         }
     ],
     [
@@ -63,9 +68,10 @@ grids = [
             "pretrained_model": [r"EleutherAI/pythia-160m"],
             "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
+            "print_decoded_prefix": [True],
         }
     ],
-][0]
+][5]
 # ordered flags to display in job name
 flags = [
     "data_dir",
