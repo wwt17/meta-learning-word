@@ -26,6 +26,8 @@ where `${BABYLM_DATA_PATH}` is the path to the BabyLM split, such as `babylm_dat
 
 `data_processing.py` processes the preprocessed .txt dataset above and generates the dataset for training, validation, and test. Its argument `--dataset ${DATA_PATH}` is the path to the directory containing the preprocessed dataset. Its argument `--word_use_data_dir ${WORD_USE_DATA_DIR}` is the directory containing the generated dataset, which will have path `${WORD_USE_DATA_DIR}/${DATA_PATH}/word` (`${DATASET_DIR}`). `${WORD_USE_DATA_DIR}` defaults to `word_use_data`.
 
+Note `data_processing.py` will use SpaCy `en_core_web_trf` model to produce POS tags for the whole preprocessed dataset and cache them in a file. This may take a long time, so you may run the model on GPU by setting `use_gpu_for_spacy_model = True` in the code. However, doing so will [change the locale due to a bug of CUDA](https://github.com/explosion/spaCy/issues/11909), so you will have to set back `use_gpu_for_spacy_model = False` after you obtain the cache and retry.
+
 #### CHILDES
 
 ```bash
@@ -42,7 +44,7 @@ where `${BABYLM_DATA_PATH}` is the path to the BabyLM 10M split, such as `babylm
 
 ##### 100M
 ```bash
-python data_processing.py --dataset ${BABYLM_DATA_PATH} --lower --remove_sents_less_than_n_words 1 --remove_sents_longer_than_n_tokens 70 --plot_word_frequency --plot_pos --min_n_examples 10 --max_freq 100 --seed 0
+python data_processing.py --dataset ${BABYLM_DATA_PATH} --lower --remove_sents_less_than_n_words 1 --remove_sents_longer_than_n_tokens 70 --plot_word_frequency --plot_pos --min_n_examples 10 --max_freq 100 --split_ratio 96 2 2 --seed 0
 ```
 where `${BABYLM_DATA_PATH}` is the path to the BabyLM 100M split, such as `babylm_data/babylm_100M`.
 
