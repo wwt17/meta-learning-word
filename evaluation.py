@@ -114,17 +114,14 @@ if __name__ == "__main__":
     fmt_kwargs = dict(t = None if args.no_new_token else NEW_TOKEN)
     if type(tokenizer) is not PreTrainedTokenizerFast:
         fmt_kwargs.update(dict(sep="\n", space="", prompt=""))
-        sep_token_id = tokenizer("\n")['input_ids'][0]  # type: ignore
         tokenizer.pad_token = tokenizer.eos_token
     else:
         # must not provide token_type_ids to the model
         tokenizer.model_input_names = ['input_ids', 'attention_mask']
         fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" ", prompt=""))
-        sep_token_id = tokenizer.convert_tokens_to_ids(fmt_kwargs["sep"]) # type: ignore
+    sep_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
 
     model = AutoModelForCausalLM.from_pretrained(args.pretrained_model).to(device)
-    model.config.bos_token_id = sep_token_id #tokenizer.bos_token_id
-    model.config.eos_token_id = sep_token_id #tokenizer.eos_token_id
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
     val_dataset = sample_examples(
@@ -164,6 +161,7 @@ if __name__ == "__main__":
 
             generation_config = transformers.generation.GenerationConfig(
                 max_new_tokens=args.max_new_tokens,
+                eos_token_id=sep_token_id,
                 pad_token_id=tokenizer.pad_token_id,
                 return_dict_in_generate=True,
                 output_scores=True,
@@ -182,7 +180,7 @@ if __name__ == "__main__":
                     sequence_length = len(sequence)
                     while sequence_length > 0 and sequence[sequence_length - 1].item() == tokenizer.pad_token_id:
                         sequence_length -= 1
-                    if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == model.config.eos_token_id:
+                    if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == generation_config.eos_token_id:
                         sequence_length -= 1
                     print(
                         f"cont. {j}:",
