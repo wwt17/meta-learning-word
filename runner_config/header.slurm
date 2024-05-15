@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --open-mode=append
+#SBATCH --open-mode=truncate
 #SBATCH --export=ALL
 #SBATCH --time=48:00:00
 #SBATCH --mem=32GB
