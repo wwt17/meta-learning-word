@@ -30,6 +30,8 @@ argparser.add_argument("--program", default="python",
                        help="The program to run with; e.g., python.")
 argparser.add_argument("--submit", action="store_true",
                        help="Jobs will be submitted.")
+argparser.add_argument("--no-confirm", action="store_true",
+                       help="No confirmation.")
 argparser.add_argument("--auto-flag", action="store_true",
                        help="Automatically find varying flags and display them in job names; if not set, use designated ordered list of flags.")
 args = argparser.parse_args()
@@ -145,5 +147,11 @@ f"""
 srun {jobcommand}
 """)
 
-    if args.submit and click.confirm("Submit job?", default=True):
-        os.system(job_start_command + " &")
+    try:
+        submitting = args.submit and (args.no_confirm or click.confirm("Submit job?", default=True))
+    except click.exceptions.Abort:
+        print()
+        break
+    else:
+        if submitting:
+            os.system(job_start_command + " &")
