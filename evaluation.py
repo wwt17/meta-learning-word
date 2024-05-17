@@ -46,6 +46,10 @@ if __name__ == "__main__":
         "--tokenizer",
     )
     argparser.add_argument(
+        "--new_token", default=NEW_TOKEN,
+        help="Replace word with this."
+    )
+    argparser.add_argument(
         "--no_new_token", action="store_true",
         help="Do not replace the word with the new token."
     )
@@ -107,7 +111,7 @@ if __name__ == "__main__":
         args.tokenizer = Path(args.data_dir, "tokenizer")
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(args.tokenizer) # type: ignore
 
-    fmt_kwargs = dict(t = None if args.no_new_token else NEW_TOKEN)
+    fmt_kwargs = dict(t = None if args.no_new_token else args.new_token)
     if type(tokenizer) is not PreTrainedTokenizerFast:
         fmt_kwargs.update(dict(sep="\n", space="", prompt=""))
         tokenizer.pad_token = tokenizer.eos_token
