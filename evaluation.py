@@ -102,10 +102,6 @@ if __name__ == "__main__":
     args = argparser.parse_args()
 
     set_seed(args.seed)
-    dataset = datasets.DatasetDict({
-        split: load_meta_dataset(Path(args.data_dir, f"meta.{split}.json"))
-        for split in ["train", "validation", "test"]
-    })
 
     if args.tokenizer is None:
         args.tokenizer = Path(args.data_dir, "tokenizer")
@@ -115,15 +111,24 @@ if __name__ == "__main__":
     if type(tokenizer) is not PreTrainedTokenizerFast:
         fmt_kwargs.update(dict(sep="\n", space="", prompt=""))
         tokenizer.pad_token = tokenizer.eos_token
+        clean_up_tokenization_spaces = True
     else:
         # must not provide token_type_ids to the model
         tokenizer.model_input_names = ['input_ids', 'attention_mask']
         fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" ", prompt=""))
+        clean_up_tokenization_spaces = False
     sep_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
 
     model = AutoModelForCausalLM.from_pretrained(args.pretrained_model).to(device)
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
+    dataset = datasets.DatasetDict({
+        split: load_meta_dataset(
+            Path(args.data_dir, f"meta.{split}.json"),
+            clean_up_tokenization_spaces=clean_up_tokenization_spaces
+        )
+        for split in ["train", "validation", "test"]
+    })
     val_dataset = sample_examples(
         dataset["validation"],
         args.n_examples,

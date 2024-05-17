@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from functools import partial
 from itertools import islice, chain
+import re
 import pickle
 import torch
 import tqdm
@@ -168,6 +169,30 @@ def plot_bar(
     ax.grid(axis='y')
 
     return ax.bar(x, y, bottom=bottom, color=color, width=width, align=align, **kwargs)
+
+
+tokenization_space_pattern = re.compile(
+    r'(?<=\bcan)\s(?=not\b)'
+    r'|(?<=\bcan)\sn(?=\'t\b)'
+    r'|\s(?=[\.\?\!,]|(n\'t|\'m|\'s|\'re|\'ve|\'d|\'ll)\b)'
+    r'|(?<=\b(gon|wan))\s(?=na\b)'
+    r'|(?<=\bgot)\s(?=ta\b)'
+    r'|(?<=\(|\[|\{)\s'
+    r'|\s(?=\)|\]|\})'
+)
+def clean_up_tokenization_spaces_for_example(
+        example,
+        tokenization_space_pattern=tokenization_space_pattern,
+):
+    sentence, offsets = example["sentence"], example["offsets"]
+    char_is_retained = np.full(len(sentence), True)
+    def _repl(m):
+        char_is_retained[m.start():m.end()] = False
+        return ""
+    new_sentence = tokenization_space_pattern.sub(_repl, sentence)
+    offset_mapping = np.insert(np.cumsum(char_is_retained), 0, 0)
+    new_offsets = [list(offset_mapping[offset]) for offset in offsets]
+    return {"sentence": new_sentence, "offsets": new_offsets}
 
 
 def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> str:
