@@ -46,12 +46,20 @@ if __name__ == "__main__":
         "--tokenizer",
     )
     argparser.add_argument(
-        "--new_token", default=NEW_TOKEN,
+        "--new_word", default=NEW_TOKEN,
         help="Replace word with this."
     )
     argparser.add_argument(
         "--no_new_token", action="store_true",
         help="Do not replace the word with the new token."
+    )
+    argparser.add_argument(
+        "--prompt", default="",
+        help="Prompt before examples."
+    )
+    argparser.add_argument(
+        "--prepend", default="",
+        help="Prepend this string to each example."
     )
     argparser.add_argument(
         "--n_examples", type=int, default=4,
@@ -111,17 +119,20 @@ if __name__ == "__main__":
         args.tokenizer = Path(args.data_dir, "tokenizer")
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(args.tokenizer) # type: ignore
 
-    fmt_kwargs = dict(t = None if args.no_new_token else args.new_token)
+    fmt_kwargs = dict(
+        t = None if args.no_new_token else args.new_word,
+        prompt = args.prompt,
+    )
     if type(tokenizer) is not PreTrainedTokenizerFast:
-        fmt_kwargs.update(dict(sep="\n", space="", prompt=""))
+        fmt_kwargs.update(dict(sep="\n", space=""))
         tokenizer.pad_token = tokenizer.eos_token
         clean_up_tokenization_spaces = True
     else:
         # must not provide token_type_ids to the model
         tokenizer.model_input_names = ['input_ids', 'attention_mask']
-        fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" ", prompt=""))
+        fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" "))
         clean_up_tokenization_spaces = False
-    sep_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
+    eos_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
 
     model = AutoModelForCausalLM.from_pretrained(args.pretrained_model).to(device)
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
@@ -129,7 +140,8 @@ if __name__ == "__main__":
     dataset = datasets.DatasetDict({
         split: load_meta_dataset(
             Path(args.data_dir, f"meta.{split}.json"),
-            clean_up_tokenization_spaces=clean_up_tokenization_spaces
+            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+            prepend=args.prepend,
         )
         for split in ["train", "validation", "test"]
     })
@@ -170,7 +182,7 @@ if __name__ == "__main__":
 
             generation_config = transformers.generation.GenerationConfig(
                 max_new_tokens=args.max_new_tokens,
-                eos_token_id=sep_token_id,
+                eos_token_id=eos_token_id,
                 pad_token_id=tokenizer.pad_token_id,
                 return_dict_in_generate=True,
                 output_scores=True,

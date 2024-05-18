@@ -12,7 +12,7 @@ import seaborn as sns
 import datasets
 import tokenizers
 from transformers import PreTrainedTokenizerFast
-from utils import frac_repr, zipdict, batchify, cache, example_str, concat_strs, clean_up_tokenization_spaces_for_example
+from utils import frac_repr, zipdict, batchify, cache, example_str, concat_strs, clean_up_tokenization_spaces_for_example, prepend_to_example
 from data_processing import count_tokens, sorted_counter_dict
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 
@@ -154,12 +154,17 @@ def sample_lm_seq(
     )
 
 
-def load_meta_dataset(data_path, clean_up_tokenization_spaces=False):
+def load_meta_dataset(data_path, clean_up_tokenization_spaces=False, prepend=""):
     with open(data_path, "r") as f:
         data = json.load(f)
     if clean_up_tokenization_spaces:
         data = {
             word: list(map(clean_up_tokenization_spaces_for_example, examples))
+            for word, examples in data.items()
+        }
+    if prepend:
+        data = {
+            word: list(map(partial(prepend_to_example, prepend), examples))
             for word, examples in data.items()
         }
     data = [{"word": word, "examples": examples} for word, examples in data.items()]

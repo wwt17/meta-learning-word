@@ -195,6 +195,14 @@ def clean_up_tokenization_spaces_for_example(
     return {"sentence": new_sentence, "offsets": new_offsets}
 
 
+def prepend_to_example(prepend_str: str, example):
+    sentence, offsets = example["sentence"], example["offsets"]
+    new_sentence = prepend_str + sentence
+    offset_shift = len(prepend_str)
+    new_offsets = [[offset_shift + o for o in offset] for offset in offsets]
+    return {"sentence": new_sentence, "offsets": new_offsets}
+
+
 def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> str:
     """Replace s at offsets by t.
     """

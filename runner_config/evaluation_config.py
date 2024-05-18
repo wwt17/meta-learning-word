@@ -63,8 +63,9 @@ grids = [
             "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
+            "new_word": ["dax"],
         }
-        for pretrained_model in ["gpt2", r"EleutherAI/pythia-160m"]
+        for pretrained_model in ["gpt2", r"EleutherAI/pythia-160m"][1:]
     ],
 ][-1]
 # ordered flags to display in job name
