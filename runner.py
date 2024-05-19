@@ -8,7 +8,6 @@ import argparse
 from pathlib import Path
 import copy
 import importlib
-import click
 
 argparser = argparse.ArgumentParser(
     description="Generate and optionally submit slurm jobs. runner_config.py is the configuration file.")
@@ -34,7 +33,11 @@ argparser.add_argument("--no-confirm", action="store_true",
                        help="No confirmation.")
 argparser.add_argument("--auto-flag", action="store_true",
                        help="Automatically find varying flags and display them in job names; if not set, use designated ordered list of flags.")
+argparser.add_argument("--singularity", action="store_true",
+                       help="Run job command in the singularity container.")
 args = argparser.parse_args()
+if args.submit and not args.no_confirm:
+    import click
 
 # read header
 with open(args.header, "r") as header_f:
@@ -138,14 +141,23 @@ for job in jobs:
 
     print(jobcommand)
     with slurm_script_path.open('w') as slurmfile:
+        if args.singularity:
+            escaped_jobcommand = jobcommand.replace(r'"', r'\"')
+            wrapped_command = f"""
+shopt -s expand_aliases
+source ~/.bashrc
+singro bash -c "source /ext3/env.sh && {escaped_jobcommand}"
+"""
+        else:
+            wrapped_command = f"""
+srun {jobcommand}
+"""
         slurmfile.write(header +
 f"""
 #SBATCH --job-name={job_name}
 #SBATCH --output={slurm_log_dir / 'slurm.out'}
 #SBATCH --error={slurm_log_dir / 'slurm.err'}
-
-srun {jobcommand}
-""")
+""" + wrapped_command)
 
     try:
         submitting = args.submit and (args.no_confirm or click.confirm("Submit job?", default=True))
