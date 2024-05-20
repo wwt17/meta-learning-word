@@ -1,3 +1,5 @@
+import os
+
 grids = [
     [
         {
@@ -64,8 +66,11 @@ grids = [
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
             "new_word": ["dax"],
+            "prompt": ["The following lines are lowercased example sentences using a new word 'dax' in random order, one per line:"],
+            "sep": [" *"],
+            "prepend": [" "],
         }
-        for pretrained_model in ["gpt2", r"EleutherAI/pythia-160m"][1:]
+        for pretrained_model in ["gpt2", r"EleutherAI/pythia-160m", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"][2:3]
     ],
 ][-1]
 # ordered flags to display in job name

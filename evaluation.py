@@ -1,24 +1,36 @@
-from typing import Any, Iterable, TypeVar
+from typing import Any, Iterable, TypeVar, Optional
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
 import argparse
 from pathlib import Path
 from itertools import islice, chain
 from functools import partial
-import json
-import tqdm
 import numpy as np
 import torch
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 import datasets
-import tokenizers
 import transformers
 from transformers import AutoTokenizer, PreTrainedTokenizerFast, AutoModelForCausalLM, set_seed
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 from data_loading import load_meta_dataset, sample_examples
 from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
-from main import device
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+class StopSubStringCriteria(transformers.StoppingCriteria):
+    def __init__(self, tokenizer, stop_string: str, prefix_length: Optional[int] = None):
+        self.tokenizer = tokenizer
+        self.stop_string = stop_string
+        self.prefix_length = prefix_length
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> torch.Tensor:
+        if self.prefix_length is not None:
+            input_ids = input_ids[:, self.prefix_length:]  # type: ignore
+        decoded_text = self.tokenizer.batch_decode(input_ids, skip_special_tokens=False)
+        return torch.tensor([self.stop_string in text for text in decoded_text], dtype=torch.bool, device=input_ids.device)
 
 
 def print_top_k_preds(logits, k: int, tokenizer):
@@ -56,6 +68,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--prompt", default="",
         help="Prompt before examples."
+    )
+    argparser.add_argument(
+        "--sep", default="",
+        help=r'Use "\n"+sep as the separator for pretrained models.'
     )
     argparser.add_argument(
         "--prepend", default="",
@@ -123,18 +139,26 @@ if __name__ == "__main__":
         t = None if args.no_new_token else args.new_word,
         prompt = args.prompt,
     )
-    if type(tokenizer) is not PreTrainedTokenizerFast:
-        fmt_kwargs.update(dict(sep="\n", space=""))
+    if tokenizer.eos_token != SEP_TOKEN:  # ad-hoc way to tell a pretrained tokenizer
+        fmt_kwargs.update(dict(sep="\n"+args.sep, space=""))
         tokenizer.pad_token = tokenizer.eos_token
         clean_up_tokenization_spaces = True
-    else:
+        #generation_config_kwargs = dict(
+        #    stop_strings = fmt_kwargs["sep"]
+        #)
+        stop_string: str = fmt_kwargs["sep"]  # type: ignore
+    else:  # my own tokenizer
         # must not provide token_type_ids to the model
         tokenizer.model_input_names = ['input_ids', 'attention_mask']
         fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" "))
         clean_up_tokenization_spaces = False
-    eos_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
+        #generation_config_kwargs = dict(
+        #    eos_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
+        #)
+        stop_string: str = fmt_kwargs["space"] + fmt_kwargs["sep"]  # type: ignore
+    eos_token_id = tokenizer(stop_string)['input_ids'][-1]  # type: ignore
 
-    model = AutoModelForCausalLM.from_pretrained(args.pretrained_model).to(device)
+    model = AutoModelForCausalLM.from_pretrained(args.pretrained_model, device_map=device)
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
     dataset = datasets.DatasetDict({
@@ -186,11 +210,14 @@ if __name__ == "__main__":
                 pad_token_id=tokenizer.pad_token_id,
                 return_dict_in_generate=True,
                 output_scores=True,
+                #**generation_config_kwargs
             )
+            #stopping_criteria = transformers.StoppingCriteriaList([StopSubStringCriteria(tokenizer, stop_string, len(prefix_input.input_ids[0]))])
 
             def _print_outputs(
                     outputs,
-                    skip_eos_token=True,
+                    skip_eos_token=False,
+                    skip_stop_string=True,
                     skip_special_tokens=False,
                     clean_up_tokenization_spaces=False,
                     print_top_k_pred=args.print_top_k_pred,
@@ -203,15 +230,17 @@ if __name__ == "__main__":
                         sequence_length -= 1
                     if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == generation_config.eos_token_id:
                         sequence_length -= 1
-                    print(
-                        f"cont. {j}:",
-                        tokenizer.decode(
-                            sequence[len(prefix_input.input_ids[0]):sequence_length],
-                            skip_special_tokens=skip_special_tokens,
-                            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-                            **kwargs
-                        )
+                    output_string = tokenizer.decode(
+                        sequence[len(prefix_input.input_ids[0]):sequence_length],
+                        skip_special_tokens=skip_special_tokens,
+                        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                        **kwargs
                     )
+                    if skip_stop_string and stop_string is not None:  # type: ignore
+                        stop_string_index = output_string.rfind(stop_string)  # type: ignore
+                        if stop_string_index >= 0:
+                            output_string = output_string[:stop_string_index]
+                    print(f"cont. {j}:", output_string)
                     if print_top_k_pred:
                         assert outputs.scores is not None, "must set output_scores=True"  # type: ignore
                         print_top_k_preds(
