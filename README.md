@@ -2,6 +2,11 @@
 
 Meta-learning a new word given a few use examples (i.e. sentences illustrating the use of the new word) in context.
 
+## Environment settings
+
+* Python 3.11
+* Required packages: see [requirements.txt](requirements.txt).
+
 ## Build dataset
 
 ### Preprocess
@@ -50,7 +55,21 @@ where `${BABYLM_DATA_PATH}` is the path to the BabyLM 100M split, such as `babyl
 
 #### Get dataset statistics
 
-This command get the statistics of the dataset in `${DATASET_DIR}`, excluding words with frequency <= 9 from the vocabulary (so they will be treated as unks) and plotting the length distribution between 0 and 70 and the the number of uses distribution between 10 and 100:
+This command get the statistics of the dataset in `${DATASET_DIR}`, excluding words with frequency <= 9 from the vocabulary (so they will be treated as unks) and plotting the length distribution between 0 and 70 and the number of uses distribution between 10 and 100:
 ```bash
 python data_loading.py stat --data ${DATASET_DIR} --freq_cutoff 9 --length_range 0 70 --n_uses_range 10 100
+```
+
+## Training
+
+Run `main.py`. You can use `runner.py` to create and submit Slurm jobs:
+```bash
+python runner.py --job_name_base meta-word --config runner_config/config.py --run_name_flag name --submit
+```
+
+## Evaluation
+
+Run `evaluation.py`. You can use `runner.py` to create and submit Slurm jobs:
+```bash
+python runner.py --job_name_base meta-word-eval --config runner_config/evaluation_config.py --submit
 ```

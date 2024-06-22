@@ -1,0 +1,13 @@
+numpy~=1.25.2
+pandas~=2.1.1
+matplotlib~=3.7.2
+seaborn~=0.13.0
+torch~=2.1.2
+datasets~=2.16.0
+tokenizers~=0.13.3
+transformers~=4.32.1
+spacy~=3.7.4
+thinc~=8.2.3
+wandb~=0.17.2
+click
+tqdm
