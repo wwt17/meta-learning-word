@@ -1,6 +1,8 @@
 from typing import Any, Iterable, TypeVar, Optional
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
+import sys
+import re
 import argparse
 from pathlib import Path
 from itertools import islice, chain
@@ -53,6 +55,9 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--pretrained_model",
         help="Pretrained model name or path to resume from."
+    )
+    argparser.add_argument(
+        "--revision",
     )
     argparser.add_argument(
         "--tokenizer",
@@ -131,9 +136,27 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
 
+    tokenizer = None
     if args.tokenizer is None:
-        args.tokenizer = Path(args.data_dir, "tokenizer")
-    tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(args.tokenizer) # type: ignore
+        args.tokenizer = args.pretrained_model
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.tokenizer,
+                revision=args.revision,
+            )
+        except OSError:
+            m = re.search(r"_data_dir_(.+)_config_", args.pretrained_model)
+            if m is None:
+                raise Exception(f"Cannot extract pretraining data_dir (used to find tokenizer) from pretrained_model {args.pretrained_model}")
+            pretraining_data_dir = Path(*m[1].split(":"))
+            print(f"pretraining data_dir extracted from pretrained_model: {pretraining_data_dir}", file=sys.stderr)
+            args.tokenizer = Path(pretraining_data_dir, "tokenizer")
+    print(f"tokenizer: {args.tokenizer}", file=sys.stderr)
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer,
+            revision=args.revision,
+        )
 
     fmt_kwargs = dict(
         t = None if args.no_new_token else args.new_word,
@@ -158,7 +181,11 @@ if __name__ == "__main__":
         stop_string: str = fmt_kwargs["space"] + fmt_kwargs["sep"]  # type: ignore
     eos_token_id = tokenizer(stop_string)['input_ids'][-1]  # type: ignore
 
-    model = AutoModelForCausalLM.from_pretrained(args.pretrained_model, device_map=device)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.pretrained_model,
+        revision=args.revision,
+        device_map=device,
+    )
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
     dataset = datasets.DatasetDict({

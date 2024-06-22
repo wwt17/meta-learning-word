@@ -84,7 +84,7 @@ if __name__ == "__main__":
     }
     sns.set_theme(style="whitegrid", rc=rc)
 
-    title = "Meta-Trained GPT-2 on CHILDES"
+    title = "Pretrained Llama-3-8B on CHILDES"
     out = title+".png"
     result_files = {
         "Meta-Trained GPT-2 on CHILDES": {
@@ -111,6 +111,10 @@ if __name__ == "__main__":
             n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
         },
+        "Pretrained Llama-3-8B on CHILDES": {
+            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_{n_examples}/slurm.out"
+            for n_examples in range(2, 11)
+        }
     }[title]
 
     plot_cls_acc(result_files, title, x_axis="#examples", chance=True, kind="line")

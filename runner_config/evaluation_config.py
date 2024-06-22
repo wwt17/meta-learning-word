@@ -32,7 +32,6 @@ grids = [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word"],
-            "tokenizer": [r"word_use_data/babylm_data/babylm_10M/word/tokenizer"],
             "pretrained_model": [
                 f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best",
             ],
@@ -46,7 +45,6 @@ grids = [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"],
-            "tokenizer": [r"word_use_data/babylm_data/babylm_100M/word/tokenizer"],
             "pretrained_model": [
                 f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_100M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.07_seed_0/best",
             ],
@@ -60,8 +58,8 @@ grids = [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"],
-            "tokenizer": [pretrained_model],
-            "pretrained_model": [pretrained_model],
+            "pretrained_model": ["gpt2", r"EleutherAI/pythia-70m-deduped", r"EleutherAI/pythia-160m", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"][1:2],
+            "revision": [f"step{step}" for step in range(10000, 143000, 10000)][:1],
             "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
@@ -70,12 +68,12 @@ grids = [
             "sep": [" *"],
             "prepend": [" "],
         }
-        for pretrained_model in ["gpt2", r"EleutherAI/pythia-160m", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"][2:3]
     ],
 ][-1]
 # ordered flags to display in job name
 flags = [
     "data_dir",
     "pretrained_model",
+    "revision",
     "n_examples",
 ]
