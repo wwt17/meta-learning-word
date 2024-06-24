@@ -107,6 +107,48 @@ def get_pos_tags(sentences, nlp):
     return pos_tags
 
 
+def count_tokens(
+        pre_tokenized_sentences: Iterable[Sequence[tuple[str, Any]]]
+):
+    counter = defaultdict(list)
+    for i, word_offsets in enumerate(pre_tokenized_sentences):
+        for word, offset in word_offsets:
+            counter[word].append((i, offset))
+    return counter
+
+
+def count_token_pos(
+        pre_tokenized_sentences: Iterable[Sequence[tuple[str, Any]]],
+        tags: Iterable[Sequence[Any]],
+):
+    counter = defaultdict(list)
+    tag_counter = defaultdict(lambda: defaultdict(int))
+    for i, (word_offsets, tags_) in enumerate(zip(pre_tokenized_sentences, tags)):
+        assert len(word_offsets) == len(tags_), f"{word_offsets=} {tags_=}"
+        for (word, offset), tag in zip(word_offsets, tags_):
+            counter[word].append((i, offset))
+            tag_counter[word][tag] += 1
+    return counter, tag_counter
+
+
+KeyType = TypeVar('KeyType')
+def sorted_counter_list(counter: Mapping[KeyType, Sized]) -> list[tuple[KeyType, Sized]]:
+    return sorted(counter.items(), key=lambda item: (-len(item[1]), item[0]))
+
+def sorted_counter_dict(counter: Mapping[KeyType, Sized]) -> dict[KeyType, Sized]:
+    return dict(sorted_counter_list(counter))
+
+TagType = TypeVar('TagType')
+def get_max_freq_tag(tag_counts: Mapping[TagType, int]) -> tuple[TagType, int]:
+    return min(tag_counts.items(), key=(lambda item: -item[1]))
+
+def get_max_freq_tag_vocab(tag_counter: Mapping[KeyType, Mapping[TagType, int]]) -> Mapping[KeyType, tuple[TagType, int]]:
+    return {
+        word: get_max_freq_tag(tag_counts)
+        for word, tag_counts in tag_counter.items()
+    }
+
+
 def plot_bar(
         x, y, bottom=None, color=None, hue=None, palette=None,
         width=1, align='center',
