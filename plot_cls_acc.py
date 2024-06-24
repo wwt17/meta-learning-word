@@ -1,4 +1,5 @@
 import argparse
+import copy
 import re
 import numpy as np
 import pandas as pd
@@ -6,69 +7,73 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def plot_cls_acc(result_files, title, x_axis="#classes", chance=True, kind="line"):
-    n_classes = None
-    accuracies = {}
+attr_patterns = {
+    "#examples": r"_n_examples_(\d+)",
+    "step": r"_step(\d+)",
+}
 
-    for n_examples, result_file in result_files.items():
+
+def read_cls_acc(result_files, chance=False):
+    records = []
+    for result_file in result_files:
+        config = {}
+        for attr, pattern in attr_patterns.items():
+            match = re.search(pattern, result_file)
+            if match is None:
+                value = None
+            else:
+                value = int(match[1])
+            config[attr] = value
         with open(result_file, "r") as f:
-            n_classes_, accuracies_ = [], []
             for line in f:
                 match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
                 if match is None:
                     break
-                n_cls, accuracy = int(match.group(1)), float(match.group(2))
-                n_classes_.append(n_cls)
-                accuracies_.append(accuracy)
-        if n_classes is None:
-            n_classes = n_classes_
-        else:
-            assert n_classes == n_classes_
-        accuracies[n_examples] = accuracies_
-
-    n_classes = np.array(n_classes)
-    n_examples = list(result_files.keys())
-    xticks, yticks = n_classes, n_examples
-    df = pd.DataFrame(accuracies, index=n_classes)
-    df.index.name = "#classes"
-    df.columns.name = "#examples"
-    if x_axis == "#examples":
-        df = df.transpose()
-        xticks, yticks = yticks, xticks
-
-    palette = sns.color_palette("husl", len(df.columns))
-
+                record = copy.copy(config)
+                record.update({
+                    "#classes": int(match[1]),
+                    "Accuracy (%)": float(match[2]),
+                })
+                records.append(record)
+    df = pd.DataFrame(records)
     if chance:
-        if x_axis == "#examples":
-            df = pd.concat([pd.DataFrame([df.columns.map(lambda c: 100/c)], columns=df.columns, index=[1]), df], ignore_index=False)
-            xticks = [1] + xticks
-        else:
-            df.insert(0, "chance", df.index.map(lambda c: 100/c))
-            palette = [(0., 0., 0.)] + palette
+        df_chance = df.copy()
+        df_chance["#examples"] = 1
+        df_chance["Accuracy (%)"] = 100 / df_chance["#classes"]
+        df_chance = df_chance.drop_duplicates()
+        df = pd.concat([df_chance, df], ignore_index=True)
+        df = df.reset_index(drop=True)
+    return df
+
+
+def plot_cls_acc(df, title, x="#classes", y="Accuracy (%)", hue="#examples", kind="line"):
+    x_values, hue_values = np.sort(df[x].unique()), np.sort(df[hue].unique())
+    palette = sns.color_palette("husl", len(hue_values))
 
     if kind == "line":
-        dashes = {column: {"chance": (1, 1)}.get(column, "") for column in df.columns}
-        ax = sns.lineplot(df, palette=palette, dashes=dashes)
-        ax.set_xticks(xticks)
-        if chance and x_axis == "#examples":
+        ax = sns.lineplot(df, x=x, y=y, hue=hue, palette=palette, dashes=False)
+        ax.set_xticks(x_values)
+        if x == "#examples":
             ax.set_xlim(xmin=1)
+        elif x == "step":
+            ax.set_xlim(xmin=0)
         ax.set_ylabel("Accuracy (%)")
         ax.set_ylim(bottom=0, top=100)
         ax.set_title(title)
     else:
         grid = sns.catplot(
-            df.melt(ignore_index=False, value_name="Accuracy (%)").reset_index(),
-            x=x_axis,
-            y="Accuracy (%)",
-            hue=("#examples" if x_axis == "#classes" else "#classes"),
+            df,
+            x=x,
+            y=y,
+            hue=hue,
             palette=palette,
             kind=kind, #type:ignore
             facet_kws=dict(
                 ylim=(0, 100)
             )
         )
-        grid.fig.subplots_adjust(top=0.9)
-        grid.fig.suptitle(title)
+        grid.figure.subplots_adjust(top=0.9)
+        grid.figure.suptitle(title)
 
 
 
@@ -84,39 +89,49 @@ if __name__ == "__main__":
     }
     sns.set_theme(style="whitegrid", rc=rc)
 
-    title = "Pretrained Llama-3-8B on CHILDES"
+    title = "Pythia-70M-deduped with simple format on CHILDES"
     out = title+".png"
     result_files = {
-        "Meta-Trained GPT-2 on CHILDES": {
-            n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
+        "Meta-Trained GPT-2 on CHILDES": [
+            f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
-        },
-        "Meta-Trained GPT-NeoX on CHILDES": {
-            n_examples: f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
+        ],
+        "Meta-Trained GPT-NeoX on CHILDES": [
+            f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
-        },
-        "Meta-Trained GPT-NeoX on BabyLM-10M": {
-            n_examples: f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_{n_examples}/slurm.out"
+        ],
+        "Meta-Trained GPT-NeoX on BabyLM-10M": [
+            f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_{n_examples}/slurm.out"
             for n_examples in range(4, 11)
-        },
-        "Pretrained GPT-2 small with simple format on CHILDES": {
-            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
+        ],
+        "Pretrained GPT-2 small with simple format on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_gpt2_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
-        },
-        "Pretrained Pythia-160M with simple format on CHILDES": {
-            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
+        ],
+        "Pretrained Pythia-160M with simple format on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
-        },
-        "Pretrained Pythia-160M with simple format on BabyLM-10M": {
-            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
+        ],
+        "Pretrained Pythia-160M with simple format on BabyLM-10M": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_pretrained_model_EleutherAI:pythia-160m_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
-        },
-        "Pretrained Llama-3-8B on CHILDES": {
-            n_examples: f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_{n_examples}/slurm.out"
+        ],
+        "Pretrained Llama-3-8B on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
-        }
+        ],
+        "Pythia-70M-deduped with simple format on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-70m-deduped_revision_step{step}_n_examples_10/slurm.out"
+            for step in range(10000, 140000+1, 10000)
+        ],
     }[title]
 
-    plot_cls_acc(result_files, title, x_axis="#examples", chance=True, kind="line")
+    if title == "Pythia-70M-deduped with simple format on CHILDES":
+        x, hue = "step", "#classes"
+    else:
+        x, hue = "#examples", "#classes"
+    chance = "#examples" in [x, hue]
+    df = read_cls_acc(result_files, chance=chance)
+    plot_cls_acc(df, title, x=x, hue=hue, kind="line")
 
     plt.savefig(out, transparent=True, dpi=1000)
