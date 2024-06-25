@@ -57,10 +57,10 @@ grids = [
     [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"],
-            "pretrained_model": ["gpt2", r"EleutherAI/pythia-70m-deduped", r"EleutherAI/pythia-160m", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"][1:2],
-            "revision": [f"step{step}" for step in range(10000, 143000, 10000)][:1],
-            "n_examples": list(range(2, 11)),
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"][:1],
+            "pretrained_model": [f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']], #["gpt2", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"],
+            "revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
+            "n_examples": list(range(10, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
             "new_word": ["dax"],

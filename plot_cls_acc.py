@@ -89,8 +89,9 @@ if __name__ == "__main__":
     }
     sns.set_theme(style="whitegrid", rc=rc)
 
-    title = "Pythia-70M-deduped with simple format on CHILDES"
+    title = "Pythia-70M with simple format on CHILDES"
     out = title+".png"
+    steps = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 4001, 1000))
     result_files = {
         "Meta-Trained GPT-2 on CHILDES": [
             f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
@@ -120,13 +121,29 @@ if __name__ == "__main__":
             f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
         ],
+        "Pythia-70M on CHILDES": [
+            f"ckpt/meta-word-eval__data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-70m_revision_step{step}_n_examples_10/slurm.out"
+            for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1000, 2000]
+        ],
+        "Pythia-70M with simple format on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-70m_revision_step{step}_n_examples_10/slurm.out"
+            for step in steps
+        ],
         "Pythia-70M-deduped with simple format on CHILDES": [
             f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-70m-deduped_revision_step{step}_n_examples_10/slurm.out"
-            for step in range(10000, 140000+1, 10000)
+            for step in steps
+        ],
+        "Pythia-160M with simple format on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-160m_revision_step{step}_n_examples_10/slurm.out"
+            for step in steps
+        ],
+        "Pythia-410M with simple format on CHILDES": [
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_EleutherAI:pythia-410m_revision_step{step}_n_examples_10/slurm.out"
+            for step in steps
         ],
     }[title]
 
-    if title == "Pythia-70M-deduped with simple format on CHILDES":
+    if re.fullmatch(r"Pythia-\d+M(|-deduped)(| with simple format) on .*", title):
         x, hue = "step", "#classes"
     else:
         x, hue = "#examples", "#classes"
