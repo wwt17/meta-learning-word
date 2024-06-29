@@ -24,17 +24,20 @@ def read_cls_acc(result_files, chance=False):
             else:
                 value = int(match[1])
             config[attr] = value
-        with open(result_file, "r") as f:
-            for line in f:
-                match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
-                if match is None:
-                    break
-                record = copy.copy(config)
-                record.update({
-                    "#classes": int(match[1]),
-                    "Accuracy (%)": float(match[2]),
-                })
-                records.append(record)
+        try:
+            with open(result_file, "r") as f:
+                for line in f:
+                    match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
+                    if match is None:
+                        break
+                    record = copy.copy(config)
+                    record.update({
+                        "#classes": int(match[1]),
+                        "Accuracy (%)": float(match[2]),
+                    })
+                    records.append(record)
+        except FileNotFoundError:
+            pass
     df = pd.DataFrame(records)
     if chance:
         df_chance = df.copy()
@@ -91,7 +94,7 @@ if __name__ == "__main__":
 
     title = "Pythia-70M with simple format on CHILDES"
     out = title+".png"
-    steps = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 4001, 1000))
+    steps = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000))
     result_files = {
         "Meta-Trained GPT-2 on CHILDES": [
             f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_gpt2_concat_False_context_length_128_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.12_seed_0/best/meta-word-eval_data_dir_word_use_data:childes:word_n_examples_{n_examples}/slurm.out"
