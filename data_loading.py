@@ -12,16 +12,17 @@ import seaborn as sns
 import datasets
 import tokenizers
 from transformers import PreTrainedTokenizerFast
-from utils import frac_repr, zipdict, batchify, cache, count_tokens, sorted_counter_dict, example_str, concat_strs, clean_up_tokenization_spaces_for_example, prepend_to_example
+from utils import frac_repr, zipdict, batchify, cache, count_tokens, sorted_counter_dict, example_str, clean_up_tokenization_spaces_for_example, prepend_to_example
+from in_context_format import InContextFormat
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 
 
 def get_meta_data_sentences(
         data: datasets.Dataset,
-        raw: bool = False,
+        t: Optional[str],
 ):
     return (
-        example["sentence"] if raw else example_str(example)
+        example_str(example, t)
         for examples in data["examples"]
         for example in examples
     )
@@ -131,6 +132,7 @@ def sample_examples(
 def sample_lm_seq(
         data: datasets.Dataset,
         n: int,
+        in_context_format: InContextFormat,
         drop_last: bool = True,
         source_column_name: str = "sentence",
         target_column_name: str = "examples",
@@ -144,7 +146,7 @@ def sample_lm_seq(
         drop_last: Whether to drop the last batch smaller than n.
     """
     def _concat_sentence_batch(batch):
-        return {target_column_name: [concat_strs(batch[source_column_name])]}
+        return {target_column_name: [in_context_format.concat_strs(batch[source_column_name])]}
 
     return data.map(
         _concat_sentence_batch,
@@ -184,7 +186,7 @@ def load_dataset_and_tokenizer(
         split: load_meta_dataset(Path(dataset_dir, f"meta.{split}.json"))
         for split in splits
     })
-    sentences = get_meta_data_sentences(meta_dataset["train"], raw=True)
+    sentences = get_meta_data_sentences(meta_dataset["train"], t=None)
     if lm:
         lm_dataset: datasets.DatasetDict = datasets.load_dataset(
             str(dataset_dir),
@@ -277,7 +279,7 @@ def dataset_stats(
     for split, data in meta_dataset.items():
         print(f"{split} split:")
         uses_stats(data, path, f"meta learning word n_uses {split} distribution", n_uses_range=n_uses_range)
-        sentence_stats(get_meta_data_sentences(data, raw=False), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
+        sentence_stats(get_meta_data_sentences(data, t=NEW_TOKEN), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
 
     print("lm data:")
     for split, data in lm_dataset.items():
@@ -299,15 +301,16 @@ def interactive_classification(
         n_class: int,
         n_study_examples: int,
         max_sample_times: int,
+        t: Optional[str],
         tokenizer: Optional[PreTrainedTokenizerFast] = None,
         seed: Optional[int] = None,
 ):
     np.random.seed(seed)
     rng = np.random.default_rng(seed=seed)
 
-    _example_str = example_str
+    _example_str = lambda example: example_str(example, t)
     if tokenizer is not None:
-        _example_str = lambda example: tokenized_text(tokenizer, example_str(example))
+        _example_str = lambda example: tokenized_text(tokenizer, example_str(example, t))
 
     n_episodes = 0
     while True:
@@ -404,6 +407,10 @@ if __name__ == "__main__":
         help="Max sample times per word."
     )
     argparser.add_argument(
+        "--new_word", default=NEW_TOKEN,
+        help="Replace word with this."
+    )
+    argparser.add_argument(
         "--seed", type=int,
         help="Random seed."
     )
@@ -428,6 +435,7 @@ if __name__ == "__main__":
             args.n_class,
             args.n_study_examples,
             args.max_sample_times,
+            args.new_word,
             tokenizer = tokenizer if args.tokenize else None,
             seed = args.seed,
         )

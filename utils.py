@@ -11,7 +11,6 @@ import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
-from text_configs import SEP_TOKEN, NEW_TOKEN
 
 
 def frac_repr(a, b, prec=2):
@@ -254,22 +253,11 @@ def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> st
     return s
 
 
-def example_str(example, t: Optional[str] = NEW_TOKEN) -> str:
+def example_str(example, t: Optional[str]) -> str:
     s = example["sentence"]
     if t is not None:
         s = replace_at_offsets(s, example["offsets"], t)
     return s
-
-
-def concat_strs(strs: Iterable[str], sep: str = SEP_TOKEN, space: str = " ", start_with_sep=True) -> str:
-    return (sep + space if start_with_sep else "") + space.join((s + space + sep for s in strs))
-
-
-def concat_examples(examples, sep: str = SEP_TOKEN, space: str = " ", t: Optional[str] = NEW_TOKEN, start_with_sep=True) -> str:
-    return concat_strs(
-        (example_str(example, t=t) for example in examples),
-        sep=sep, space=space, start_with_sep=start_with_sep,
-    )
 
 
 def mix_iter(*iters):

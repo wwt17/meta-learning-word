@@ -15,10 +15,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
-from utils import frac_repr, to, example_str, concat_examples, mix_iter
+from utils import frac_repr, to, mix_iter
 from data_loading import load_dataset_and_tokenizer, sample_examples, sample_lm_seq
-from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
+from in_context_format import InContextFormat
+from evaluation_cls import cls_collate_fn, evaluate_cls
 from concat_lm_dataset import ConcatLMDataset
+from text_configs import NEW_TOKEN, SEP_TOKEN
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,10 +31,6 @@ def save_checkpoint(ckpt_path, model, optimizer, scheduler):
     model.save_pretrained(ckpt_path)
     torch.save(optimizer.state_dict(), ckpt_path/"optimizer.pt")
     torch.save(scheduler.state_dict(), ckpt_path/"scheduler.pt")
-
-
-def construct_meta_lm_example(item, **kwargs):
-    return {"examples": concat_examples(item["examples"], **kwargs)}
 
 
 def evaluate_lm(model, dataloader, loss_fct) -> float:
@@ -99,13 +97,11 @@ def main(project="meta-learning-word", **kwargs):
     optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
-    _kwargs = dict()
-    _construct_meta_lm_example = construct_meta_lm_example
-    _construct_meta_cls_example = construct_meta_cls_example
-    if wandb.config.no_new_token:
-        _kwargs.update(dict(t=None))
-        _construct_meta_lm_example = partial(_construct_meta_lm_example, **_kwargs)
-        _construct_meta_cls_example = partial(_construct_meta_cls_example, **_kwargs)
+    in_context_format = InContextFormat(
+        t = None if wandb.config.no_new_token else NEW_TOKEN,
+        sep = ' ' + SEP_TOKEN,
+        prepend = ' ',
+    )
 
     step = 0
     logging_loss, logging_n_tokens = 0., 0
@@ -123,6 +119,7 @@ def main(project="meta-learning-word", **kwargs):
         dataset = sample_lm_seq(
             dataset,
             n_examples,
+            in_context_format,
         )
         dataset = dataset.map(
             lambda batch: tokenizer(batch["examples"]),
@@ -158,7 +155,7 @@ def main(project="meta-learning-word", **kwargs):
         max_sample_times=1,  # ensure different words in a classification batch
         rng=np.random.default_rng(wandb.config.eval_seed)
     )
-    val_meta_ind_lm_dataset = val_meta_ind_dataset.map(_construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+    val_meta_ind_lm_dataset = val_meta_ind_dataset.map(in_context_format.construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
     val_meta_ind_lm_dataloader = DataLoader(
         val_meta_ind_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
@@ -166,7 +163,7 @@ def main(project="meta-learning-word", **kwargs):
         drop_last=False,
         collate_fn=collator,
     )
-    val_meta_unique_lm_dataset = val_meta_unique_dataset.map(_construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+    val_meta_unique_lm_dataset = val_meta_unique_dataset.map(in_context_format.construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
     val_meta_unique_lm_dataloader = DataLoader(
         val_meta_unique_lm_dataset, # type: ignore
         batch_size=wandb.config.eval_batch_size,
@@ -174,7 +171,7 @@ def main(project="meta-learning-word", **kwargs):
         drop_last=False,
         collate_fn=collator,
     )
-    val_meta_cls_dataset = val_meta_unique_dataset.map(_construct_meta_cls_example)
+    val_meta_cls_dataset = val_meta_unique_dataset.map(in_context_format.construct_meta_cls_example)
     val_meta_cls_dataloaders = {
         n_classes: DataLoader(
             val_meta_cls_dataset, # type: ignore
@@ -238,7 +235,7 @@ def main(project="meta-learning-word", **kwargs):
         if args.concat:
             print("Concatenate all examples")
             train_meta_dataset = sample_examples(train_meta_dataset, 1, rng=None)  # flatten examples
-            train_meta_dataset = train_meta_dataset.map(partial(_construct_meta_lm_example, start_with_sep=False))
+            train_meta_dataset = train_meta_dataset.map(partial(in_context_format.construct_meta_lm_example, start_with_sep=False))
             train_meta_dataset = train_meta_dataset.map(lambda batch: tokenizer(batch["examples"]), batched=True)
             train_meta_dataset = np.fromiter(chain.from_iterable(train_meta_dataset["input_ids"]), int)  # concatenate token ids
             context_length = wandb.config.context_length
@@ -256,7 +253,7 @@ def main(project="meta-learning-word", **kwargs):
             )
             train_lm_dataloader = None  # TODO: implement train_lm_dataloader
         else:
-            train_meta_dataset = train_meta_dataset.map(_construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+            train_meta_dataset = train_meta_dataset.map(in_context_format.construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
             train_meta_dataloader = DataLoader(
                 train_meta_dataset, # type: ignore
                 batch_size=wandb.config.batch_size,

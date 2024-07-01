@@ -16,7 +16,8 @@ import transformers
 from transformers import AutoTokenizer, PreTrainedTokenizerFast, AutoModelForCausalLM, set_seed
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 from data_loading import load_meta_dataset, sample_examples
-from evaluation_cls import construct_meta_cls_example, cls_collate_fn, evaluate_cls
+from in_context_format import InContextFormat
+from evaluation_cls import cls_collate_fn, evaluate_cls
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -79,7 +80,7 @@ if __name__ == "__main__":
         help=r'Use "\n"+sep as the separator for pretrained models.'
     )
     argparser.add_argument(
-        "--prepend", default="",
+        "--prepend", default=" ",
         help="Prepend this string to each example."
     )
     argparser.add_argument(
@@ -158,27 +159,30 @@ if __name__ == "__main__":
             revision=args.revision,
         )
 
-    fmt_kwargs = dict(
-        t = None if args.no_new_token else args.new_word,
-        prompt = args.prompt,
-    )
     if tokenizer.eos_token != SEP_TOKEN:  # ad-hoc way to tell a pretrained tokenizer
-        fmt_kwargs.update(dict(sep="\n"+args.sep, space=""))
+        sep = "\n" + args.sep
+        prepend = args.prepend
         tokenizer.pad_token = tokenizer.eos_token
         clean_up_tokenization_spaces = True
         #generation_config_kwargs = dict(
-        #    stop_strings = fmt_kwargs["sep"]
+        #    stop_strings = sep
         #)
-        stop_string: str = fmt_kwargs["sep"]  # type: ignore
     else:  # my own tokenizer
         # must not provide token_type_ids to the model
         tokenizer.model_input_names = ['input_ids', 'attention_mask']
-        fmt_kwargs.update(dict(sep=SEP_TOKEN, space=" "))
+        sep = " " + SEP_TOKEN
+        prepend = " "
         clean_up_tokenization_spaces = False
         #generation_config_kwargs = dict(
-        #    eos_token_id = tokenizer(fmt_kwargs["sep"])['input_ids'][0]  # type: ignore
+        #    eos_token_id = tokenizer(sep)['input_ids'][0]  # type: ignore
         #)
-        stop_string: str = fmt_kwargs["space"] + fmt_kwargs["sep"]  # type: ignore
+    in_context_format = InContextFormat(
+        t = None if args.no_new_token else args.new_word,
+        sep = sep,
+        prepend = prepend,
+        prompt = args.prompt,
+    )
+    stop_string: str = sep
     eos_token_id = tokenizer(stop_string)['input_ids'][-1]  # type: ignore
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -192,7 +196,6 @@ if __name__ == "__main__":
         split: load_meta_dataset(
             Path(args.data_dir, f"meta.{split}.json"),
             clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-            prepend=args.prepend,
         )
         for split in ["train", "validation", "test"]
     })
@@ -202,7 +205,7 @@ if __name__ == "__main__":
         max_sample_times=args.max_sample_times,
         rng=np.random.default_rng(args.seed),
     )
-    val_cls_dataset = val_dataset.map(partial(construct_meta_cls_example, **fmt_kwargs))
+    val_cls_dataset = val_dataset.map(in_context_format.construct_meta_cls_example)
     val_cls_dataloaders = {
         n_classes: DataLoader(
             val_cls_dataset, # type: ignore
