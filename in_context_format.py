@@ -1,5 +1,29 @@
 from typing import Optional, Iterable
 from utils import example_str
+from text_configs import NEW_TOKEN
+
+
+def add_in_context_format_arguments(argparser):
+    argparser.add_argument(
+        "--new_word", default=NEW_TOKEN,
+        help="Replace the meta-learned word with this."
+    )
+    argparser.add_argument(
+        "--no_new_token", action="store_true",
+        help="Do not replace the meta-learned word with the new word."
+    )
+    argparser.add_argument(
+        "--prompt", default="",
+        help="Prompt before examples."
+    )
+    argparser.add_argument(
+        "--sep", default="",
+        help=r'Use "\n"+sep as the separator for pretrained models.'
+    )
+    argparser.add_argument(
+        "--prepend", default=" ",
+        help="Prepend this string to each example."
+    )
 
 
 class InContextFormat:

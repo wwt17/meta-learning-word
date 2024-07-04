@@ -1,5 +1,8 @@
 from typing import Optional, Any
 from collections.abc import Iterable, Sequence, Mapping, Sized
+import os
+import sys
+import re
 import argparse
 from pathlib import Path
 from collections import defaultdict
@@ -11,7 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import datasets
 import tokenizers
-from transformers import PreTrainedTokenizerFast
+from transformers import AutoTokenizer, PreTrainedTokenizerFast
 from utils import frac_repr, zipdict, batchify, cache, count_tokens, sorted_counter_dict, example_str, clean_up_tokenization_spaces_for_example, prepend_to_example
 from in_context_format import InContextFormat
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
@@ -51,13 +54,6 @@ def build_vocab(
     vocab = special_tokens + vocab + new_tokens
     vocab = {token: idx for idx, token in enumerate(vocab)}
     return vocab
-
-
-tokenizer_cache = partial(
-    cache,
-    loader=PreTrainedTokenizerFast.from_pretrained,
-    saver=PreTrainedTokenizerFast.save_pretrained,
-)
 
 
 def get_tokenizer(
@@ -173,20 +169,15 @@ def load_meta_dataset(data_path, clean_up_tokenization_spaces=False, prepend="")
     return data
 
 
-def load_dataset_and_tokenizer(
+def load_dataset(
         dataset_dir,
         lm: bool = True,
         splits = ["train", "validation", "test"],
-        freq_cutoff: int = 0,
-        exclude_meta_words: bool = True,
-        exclude_tokens: Iterable[str] = ["xxx"],
-        cache_tokenizer: bool = False,
 ):
     meta_dataset = datasets.DatasetDict({
         split: load_meta_dataset(Path(dataset_dir, f"meta.{split}.json"))
         for split in splits
     })
-    sentences = get_meta_data_sentences(meta_dataset["train"], t=None)
     if lm:
         lm_dataset: datasets.DatasetDict = datasets.load_dataset(
             str(dataset_dir),
@@ -194,26 +185,76 @@ def load_dataset_and_tokenizer(
         )  # type: ignore
         if "text" in lm_dataset["train"].features:
             lm_dataset = lm_dataset.rename_column("text", "sentence")
-        sentences = chain(sentences, get_lm_data_sentences(lm_dataset["train"]))
     else:
         lm_dataset = None  # type: ignore
-    if exclude_meta_words:
-        exclude_tokens = chain(
-            exclude_tokens,
-            chain.from_iterable(
-                (data["word"] for split, data in meta_dataset.items())
+    return meta_dataset, lm_dataset
+
+
+def load_data_tokenizer(
+        meta_dataset: Optional[datasets.DatasetDict] = None,
+        lm_dataset: Optional[datasets.DatasetDict] = None,
+        use_split: str = "train",
+        freq_cutoff: int = 0,
+        exclude_meta_words: bool = True,
+        exclude_tokens: Iterable[str] = ["xxx"],
+        cache_dir: Optional[os.PathLike] = None,
+) -> PreTrainedTokenizerFast:
+    try:
+        tokenizer = PreTrainedTokenizerFast.from_pretrained(cache_dir)  # type: ignore
+    except OSError:
+        if meta_dataset is None:
+            raise Exception("Must provide meta_dataset for building the data tokenizer.")
+        sentences = get_meta_data_sentences(meta_dataset[use_split], t=None)
+        if lm_dataset is not None:
+            sentences = chain(sentences, get_lm_data_sentences(lm_dataset[use_split]))
+        if exclude_meta_words:
+            exclude_tokens = chain(
+                exclude_tokens,
+                chain.from_iterable(
+                    (data["word"] for split, data in meta_dataset.items())
+                )
             )
+        tokenizer = get_tokenizer(
+            sentences,
+            freq_cutoff=freq_cutoff,
+            exclude_tokens=exclude_tokens,
         )
-    _get_tokenizer = get_tokenizer
-    if cache_tokenizer:
-        _get_tokenizer = tokenizer_cache(Path(dataset_dir, "tokenizer"))(_get_tokenizer)
-    tokenizer = _get_tokenizer(
-        sentences,
-        freq_cutoff=freq_cutoff,
-        exclude_tokens=exclude_tokens,
-    )
-    print(f"tokenizer size: {len(tokenizer)}")
-    return meta_dataset, lm_dataset, tokenizer
+        if cache_dir is not None:
+            tokenizer.save_pretrained(cache_dir)
+    return tokenizer
+
+
+def load_tokenizer(
+        name_or_path,
+        revision=None,
+        data_tokenizer_kwargs: dict = {},
+):
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            name_or_path,
+            revision=revision,
+        )
+    except OSError:
+        if name_or_path is not None:  # load data tokenizer
+            if Path(name_or_path).name == "tokenizer":
+                pass
+            else:
+                m = re.search(r"_data_dir_(.+)_config_", str(name_or_path))
+                if m is not None:
+                    pretraining_data_dir = Path(*m[1].split(":"))
+                    print(f"pretraining data_dir extracted from pretrained_model: {pretraining_data_dir}", file=sys.stderr)
+                    name_or_path = Path(pretraining_data_dir, "tokenizer")
+                else:
+                    raise Exception(f"Cannot extract pretraining data_dir (used to find tokenizer) from pretrained_model {name_or_path}")
+            tokenizer = load_data_tokenizer(
+                cache_dir=name_or_path,
+                **data_tokenizer_kwargs
+            )
+        else:
+            raise Exception(f"Must provide name_or_path for the tokenizer")
+    print(f"tokenizer: {name_or_path}", file=sys.stderr)
+    print(f"tokenizer size: {len(tokenizer)}", file=sys.stderr)
+    return tokenizer
 
 
 def displot(data, discrete=True, binrange=None, y_grid=True, plot_mean=True, mean_color='r', height=4, aspect=2, **kwargs):
@@ -416,8 +457,12 @@ if __name__ == "__main__":
     )
     args = argparser.parse_args()
 
-    meta_dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
+    meta_dataset, lm_dataset = load_dataset(
         args.data,
+    )
+    tokenizer = load_data_tokenizer(
+        meta_dataset,
+        lm_dataset,
         freq_cutoff = args.freq_cutoff,
         exclude_meta_words = not args.include_meta_words,
     )

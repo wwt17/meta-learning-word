@@ -1,8 +1,6 @@
 from typing import Any, Iterable, TypeVar, Optional
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
-import sys
-import re
 import argparse
 from pathlib import Path
 from itertools import islice, chain
@@ -13,10 +11,10 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 import datasets
 import transformers
-from transformers import AutoTokenizer, PreTrainedTokenizerFast, AutoModelForCausalLM, set_seed
+from transformers import AutoModelForCausalLM, set_seed
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
-from data_loading import load_meta_dataset, sample_examples
-from in_context_format import InContextFormat
+from data_loading import load_meta_dataset, load_tokenizer, sample_examples
+from in_context_format import InContextFormat, add_in_context_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
 
 
@@ -63,26 +61,8 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--tokenizer",
     )
-    argparser.add_argument(
-        "--new_word", default=NEW_TOKEN,
-        help="Replace word with this."
-    )
-    argparser.add_argument(
-        "--no_new_token", action="store_true",
-        help="Do not replace the word with the new token."
-    )
-    argparser.add_argument(
-        "--prompt", default="",
-        help="Prompt before examples."
-    )
-    argparser.add_argument(
-        "--sep", default="",
-        help=r'Use "\n"+sep as the separator for pretrained models.'
-    )
-    argparser.add_argument(
-        "--prepend", default=" ",
-        help="Prepend this string to each example."
-    )
+    group = argparser.add_argument_group("In-context format")
+    add_in_context_format_arguments(group)
     argparser.add_argument(
         "--n_examples", type=int, default=4,
     )
@@ -137,27 +117,10 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
 
-    tokenizer = None
-    if args.tokenizer is None:
-        args.tokenizer = args.pretrained_model
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(
-                args.tokenizer,
-                revision=args.revision,
-            )
-        except OSError:
-            m = re.search(r"_data_dir_(.+)_config_", args.pretrained_model)
-            if m is None:
-                raise Exception(f"Cannot extract pretraining data_dir (used to find tokenizer) from pretrained_model {args.pretrained_model}")
-            pretraining_data_dir = Path(*m[1].split(":"))
-            print(f"pretraining data_dir extracted from pretrained_model: {pretraining_data_dir}", file=sys.stderr)
-            args.tokenizer = Path(pretraining_data_dir, "tokenizer")
-    print(f"tokenizer: {args.tokenizer}", file=sys.stderr)
-    if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.tokenizer,
-            revision=args.revision,
-        )
+    tokenizer = load_tokenizer(
+        args.tokenizer if args.tokenizer is not None else args.pretrained_model,
+        revision=args.revision,
+    )
 
     if tokenizer.eos_token != SEP_TOKEN:  # ad-hoc way to tell a pretrained tokenizer
         sep = "\n" + args.sep

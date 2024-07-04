@@ -14,10 +14,10 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
-from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
+from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
 from utils import frac_repr, to, mix_iter
-from data_loading import load_dataset_and_tokenizer, sample_examples, sample_lm_seq
-from in_context_format import InContextFormat
+from data_loading import load_dataset, load_tokenizer, sample_examples, sample_lm_seq
+from in_context_format import InContextFormat, add_in_context_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
 from concat_lm_dataset import ConcatLMDataset
 from text_configs import NEW_TOKEN, SEP_TOKEN
@@ -67,28 +67,47 @@ def main(project="meta-learning-word", **kwargs):
     if wandb.config.seed is not None:
         set_seed(wandb.config.seed)
 
-    meta_dataset, lm_dataset, tokenizer = load_dataset_and_tokenizer(
+    meta_dataset, lm_dataset = load_dataset(
         wandb.config.data_dir,
         lm=wandb.config.lm,
-        freq_cutoff=wandb.config.freq_cutoff,
-        cache_tokenizer=True,
+    )
+    #TODO: add new tokens to tokenizer. Note: if a new token is added without a preceding space, the preceding space in the text will become an additional token; if a new token is added with a preceding space, it fails when there is no preceding space in the text (like in '"[new-token]"'). Potential solution: 1) always replace occrrances of the word along with any leading spaces with ' [new-token]'; 2) do not clean up tokenization spaces after left brackets.
+    tokenizer = load_tokenizer(
+        wandb.config.tokenizer if wandb.config.tokenizer is not None else (
+            wandb.config.pretrained_model if wandb.config.pretrained_model is not None else
+            Path(wandb.config.data_dir, "tokenizer")
+        ),
+        revision=wandb.config.revision,
+        data_tokenizer_kwargs=dict(
+            meta_dataset=meta_dataset,
+            lm_dataset=lm_dataset,
+            freq_cutoff=wandb.config.freq_cutoff,
+        )
     )
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
 
-    config = AutoConfig.from_pretrained(
-        wandb.config.config,
-        vocab_size=tokenizer.vocab_size,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-    )
-    model_max_length = getattr(config, model_max_length_attr[type(config)])
+    if wandb.config.pretrained_model is not None:
+        model = AutoModelForCausalLM.from_pretrained(
+            wandb.config.pretrained_model,
+            revision=wandb.config.revision,
+            device_map=device,
+        )
+    else:
+        config = AutoConfig.from_pretrained(
+            wandb.config.config,
+            vocab_size=tokenizer.vocab_size,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+        model = AutoModelForCausalLM.from_config(config).to(device)
+    #TODO: add new token embeddings to model
+    print("model config:")
+    print(model.config)
+    model_max_length = getattr(model.config, model_max_length_attr[type(model.config)])
     tokenizer.model_max_length = model_max_length  # TODO: have effect only when calling tokenizer(..., truncation=True)
     if wandb.config.context_length is None:
         wandb.config.update(dict(context_length=model_max_length), allow_val_change=True)
-    model = AutoModelForCausalLM.from_config(config).to(device)
-    print("model config:")
-    print(model.config)
     n_params = sum(map(torch.Tensor.nelement, model.parameters()))
     print(f"model #parameters: {n_params}")
 
@@ -334,6 +353,14 @@ if __name__ == "__main__":
         help="Pretrained model name or path to resume from."
     )
     argparser.add_argument(
+        "--revision",
+    )
+    argparser.add_argument(
+        "--tokenizer",
+    )
+    group = argparser.add_argument_group("In-context format")
+    add_in_context_format_arguments(group)
+    argparser.add_argument(
         "--config", default="gpt2",
         help="pretrained_model_name_or_path for AutoConfig."
     )
@@ -348,10 +375,6 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--context_length", type=int,
         help="Context length used in training LM on concatenated text."
-    )
-    argparser.add_argument(
-        "--no_new_token", action="store_true",
-        help="Do not replace the word with the new token."
     )
     argparser.add_argument(
         "--freq_cutoff", type=int, default=4,
