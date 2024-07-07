@@ -244,19 +244,44 @@ def prepend_to_example(prepend_str: str, example):
     return {"sentence": new_sentence, "offsets": new_offsets}
 
 
-def replace_at_offsets(s: str, offsets: Sequence[tuple[int, int]], t: str) -> str:
+def _offset_with_leading_space(
+        offset: tuple[int, int],
+        s: str,
+        leading_space: str,
+):
+    start, end = offset
+    while start > 0 and s[start - 1] == leading_space:
+        start -= 1
+    return (start, end)
+
+
+def replace_at_offsets(
+        s: str,
+        offsets: Sequence[tuple[int, int]],
+        t: str,
+        leading_space: Optional[str] = None,
+) -> str:
     """Replace s at offsets by t.
     """
+    if leading_space is not None:
+        offsets = [
+            _offset_with_leading_space(offset, s, leading_space)
+            for offset in offsets
+        ]
     offsets = sorted(offsets)
     for offset in reversed(offsets):
         s = s[:offset[0]] + t + s[offset[1]:]
     return s
 
 
-def example_str(example, t: Optional[str]) -> str:
+def example_str(
+        example,
+        t: Optional[str],
+        leading_space: Optional[str] = " ",
+) -> str:
     s = example["sentence"]
     if t is not None:
-        s = replace_at_offsets(s, example["offsets"], t)
+        s = replace_at_offsets(s, example["offsets"], t, leading_space)
     return s
 
 

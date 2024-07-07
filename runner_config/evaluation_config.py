@@ -63,7 +63,7 @@ grids = [
             "n_examples": list(range(10, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
-            "new_word": ["dax"],
+            "new_word": [" dax"],
             "prompt": ["The following lines are lowercased example sentences using a new word 'dax' in random order, one per line:"],
             "sep": [" *"],
             "prepend": [" "],

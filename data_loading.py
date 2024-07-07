@@ -87,6 +87,10 @@ def get_tokenizer(
     return tokenizer
 
 
+def is_data_tokenizer(tokenizer) -> bool:
+    return tokenizer.eos_token == SEP_TOKEN
+
+
 def sample_examples(
         data: datasets.Dataset,
         n_examples: int,
@@ -173,9 +177,10 @@ def load_dataset(
         dataset_dir,
         lm: bool = True,
         splits = ["train", "validation", "test"],
+        meta_dataset_kwargs = dict(),
 ):
     meta_dataset = datasets.DatasetDict({
-        split: load_meta_dataset(Path(dataset_dir, f"meta.{split}.json"))
+        split: load_meta_dataset(Path(dataset_dir, f"meta.{split}.json"), **meta_dataset_kwargs)
         for split in splits
     })
     if lm:
@@ -228,6 +233,8 @@ def load_tokenizer(
         name_or_path,
         revision=None,
         data_tokenizer_kwargs: dict = {},
+        new_tokens=None,
+        info_file=sys.stderr,
 ):
     try:
         tokenizer = AutoTokenizer.from_pretrained(
@@ -252,9 +259,34 @@ def load_tokenizer(
             )
         else:
             raise Exception(f"Must provide name_or_path for the tokenizer")
-    print(f"tokenizer: {name_or_path}", file=sys.stderr)
-    print(f"tokenizer size: {len(tokenizer)}", file=sys.stderr)
-    return tokenizer
+    print(f"tokenizer: {name_or_path}", file=info_file)
+    print(f"tokenizer size: {len(tokenizer)}", file=info_file)
+    if new_tokens is not None:
+        n_added_tokens = tokenizer.add_tokens(new_tokens)
+        print(f"added {n_added_tokens} tokens in {new_tokens}", file=info_file)
+        print(f"tokenizer size: {len(tokenizer)}", file=info_file)
+    else:
+        n_added_tokens = 0
+    return tokenizer, n_added_tokens
+
+
+def set_and_get_format(tokenizer, args):
+    t = None if args.no_new_token else args.new_word
+    if not is_data_tokenizer(tokenizer):  # pretrained tokenizer
+        sep = "\n" + args.sep
+        tokenizer.pad_token = tokenizer.eos_token
+    else:  # my own tokenizer
+        # must not provide token_type_ids to the model
+        tokenizer.model_input_names = ['input_ids', 'attention_mask']
+        if t is not None:
+            t = " " + t  # since we always replace a word in text with leading spaces
+        sep = " " + SEP_TOKEN
+    in_context_format = InContextFormat(
+        t = t,
+        sep = sep,
+        prompt = args.prompt,
+    )
+    return in_context_format
 
 
 def displot(data, discrete=True, binrange=None, y_grid=True, plot_mean=True, mean_color='r', height=4, aspect=2, **kwargs):
@@ -328,7 +360,7 @@ def dataset_stats(
         sentence_stats(get_lm_data_sentences(data), tokenizer, path, f"lm sentence length {split} distribution", length_range=length_range)
 
 
-def tokenized_text(tokenizer, text, skip_special_tokens=True, **kwargs):
+def tokenized_text(tokenizer, text, skip_special_tokens=False, **kwargs):  # TODO: skip other special tokens but retain the new word
     encoding = tokenizer(text)
     return tokenizer.decode(
         encoding["input_ids"],

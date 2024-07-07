@@ -16,11 +16,10 @@ from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
 from utils import frac_repr, to, mix_iter
-from data_loading import load_dataset, load_tokenizer, sample_examples, sample_lm_seq
-from in_context_format import InContextFormat, add_in_context_format_arguments
+from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
+from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
 from concat_lm_dataset import ConcatLMDataset
-from text_configs import NEW_TOKEN, SEP_TOKEN
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -70,9 +69,12 @@ def main(project="meta-learning-word", **kwargs):
     meta_dataset, lm_dataset = load_dataset(
         wandb.config.data_dir,
         lm=wandb.config.lm,
+        meta_dataset_kwargs=dict(
+            clean_up_tokenization_spaces = wandb.config.pretrained_model is not None,
+            prepend = wandb.config.prepend,
+        )
     )
-    #TODO: add new tokens to tokenizer. Note: if a new token is added without a preceding space, the preceding space in the text will become an additional token; if a new token is added with a preceding space, it fails when there is no preceding space in the text (like in '"[new-token]"'). Potential solution: 1) always replace occrrances of the word along with any leading spaces with ' [new-token]'; 2) do not clean up tokenization spaces after left brackets.
-    tokenizer = load_tokenizer(
+    tokenizer, n_added_tokens = load_tokenizer(
         wandb.config.tokenizer if wandb.config.tokenizer is not None else (
             wandb.config.pretrained_model if wandb.config.pretrained_model is not None else
             Path(wandb.config.data_dir, "tokenizer")
@@ -82,7 +84,8 @@ def main(project="meta-learning-word", **kwargs):
             meta_dataset=meta_dataset,
             lm_dataset=lm_dataset,
             freq_cutoff=wandb.config.freq_cutoff,
-        )
+        ),
+        new_tokens = [args.new_word] if wandb.config.enforce_single_token else None,
     )
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
@@ -93,15 +96,17 @@ def main(project="meta-learning-word", **kwargs):
             revision=wandb.config.revision,
             device_map=device,
         )
+        if n_added_tokens:
+            model.resize_token_embeddings(len(tokenizer))
+        # TODO: initialize new token embeddings
     else:
         config = AutoConfig.from_pretrained(
             wandb.config.config,
-            vocab_size=tokenizer.vocab_size,
+            vocab_size=len(tokenizer),  # size of the full vocabulary with the added tokens
             bos_token_id=tokenizer.bos_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
         model = AutoModelForCausalLM.from_config(config).to(device)
-    #TODO: add new token embeddings to model
     print("model config:")
     print(model.config)
     model_max_length = getattr(model.config, model_max_length_attr[type(model.config)])
@@ -116,11 +121,7 @@ def main(project="meta-learning-word", **kwargs):
     optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
-    in_context_format = InContextFormat(
-        t = None if wandb.config.no_new_token else NEW_TOKEN,
-        sep = ' ' + SEP_TOKEN,
-        prepend = ' ',
-    )
+    in_context_format = set_and_get_format(tokenizer, wandb.config)
 
     step = 0
     logging_loss, logging_n_tokens = 0., 0
@@ -359,7 +360,7 @@ if __name__ == "__main__":
         "--tokenizer",
     )
     group = argparser.add_argument_group("In-context format")
-    add_in_context_format_arguments(group)
+    add_format_arguments(group)
     argparser.add_argument(
         "--config", default="gpt2",
         help="pretrained_model_name_or_path for AutoConfig."

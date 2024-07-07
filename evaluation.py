@@ -12,9 +12,8 @@ from torch.utils.data import DataLoader
 import datasets
 import transformers
 from transformers import AutoModelForCausalLM, set_seed
-from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
-from data_loading import load_meta_dataset, load_tokenizer, sample_examples
-from in_context_format import InContextFormat, add_in_context_format_arguments
+from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
+from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
 
 
@@ -62,7 +61,7 @@ if __name__ == "__main__":
         "--tokenizer",
     )
     group = argparser.add_argument_group("In-context format")
-    add_in_context_format_arguments(group)
+    add_format_arguments(group)
     argparser.add_argument(
         "--n_examples", type=int, default=4,
     )
@@ -117,35 +116,18 @@ if __name__ == "__main__":
 
     set_seed(args.seed)
 
-    tokenizer = load_tokenizer(
+    tokenizer, n_added_tokens = load_tokenizer(
         args.tokenizer if args.tokenizer is not None else args.pretrained_model,
         revision=args.revision,
+        new_tokens = [args.new_word] if args.enforce_single_token else None,
     )
 
-    if tokenizer.eos_token != SEP_TOKEN:  # ad-hoc way to tell a pretrained tokenizer
-        sep = "\n" + args.sep
-        prepend = args.prepend
-        tokenizer.pad_token = tokenizer.eos_token
-        clean_up_tokenization_spaces = True
-        #generation_config_kwargs = dict(
-        #    stop_strings = sep
-        #)
-    else:  # my own tokenizer
-        # must not provide token_type_ids to the model
-        tokenizer.model_input_names = ['input_ids', 'attention_mask']
-        sep = " " + SEP_TOKEN
-        prepend = " "
-        clean_up_tokenization_spaces = False
-        #generation_config_kwargs = dict(
-        #    eos_token_id = tokenizer(sep)['input_ids'][0]  # type: ignore
-        #)
-    in_context_format = InContextFormat(
-        t = None if args.no_new_token else args.new_word,
-        sep = sep,
-        prepend = prepend,
-        prompt = args.prompt,
-    )
-    stop_string: str = sep
+    in_context_format = set_and_get_format(tokenizer, args)
+    #generation_config_kwargs = dict(
+    ##   stop_strings = in_context_format.sep
+    ##   eos_token_id = tokenizer(in_context_format.sep)['input_ids'][0]  # type: ignore
+    #)
+    stop_string: str = in_context_format.sep
     eos_token_id = tokenizer(stop_string)['input_ids'][-1]  # type: ignore
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -153,15 +135,19 @@ if __name__ == "__main__":
         revision=args.revision,
         device_map=device,
     )
+    if n_added_tokens:
+        print("Warning: may use untrained token embeddings")
+        model.resize_token_embeddings(len(tokenizer))
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
-    dataset = datasets.DatasetDict({
-        split: load_meta_dataset(
-            Path(args.data_dir, f"meta.{split}.json"),
-            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+    dataset, _ = load_dataset(
+        args.data_dir,
+        lm=False,
+        meta_dataset_kwargs=dict(
+            clean_up_tokenization_spaces = not is_data_tokenizer(tokenizer),
+            prepend=args.prepend,
         )
-        for split in ["train", "validation", "test"]
-    })
+    )
     val_dataset = sample_examples(
         dataset["validation"],
         args.n_examples,
@@ -211,7 +197,7 @@ if __name__ == "__main__":
                     outputs,
                     skip_eos_token=False,
                     skip_stop_string=True,
-                    skip_special_tokens=False,
+                    skip_special_tokens=False,  # TODO: skip other special tokens but retain the new word
                     clean_up_tokenization_spaces=False,
                     print_top_k_pred=args.print_top_k_pred,
                     **kwargs
