@@ -11,6 +11,7 @@ import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
+import transformers
 
 
 def frac_repr(a, b, prec=2):
@@ -306,3 +307,40 @@ def mix_iter(*iters):
             yield next(its[max_left_i])
         else:
             break
+
+
+def unique(elements, equal_func = lambda a, b: a == b):
+    unique_elements = []
+    for element in elements:
+        for element_ in unique_elements:
+            if equal_func(element, element_):
+                break
+        else:
+            unique_elements.append(element)
+            yield element
+
+
+def get_embedding_params(model: transformers.PreTrainedModel):
+    yield from unique(
+        chain(
+            model.get_input_embeddings().parameters(),
+            model.get_output_embeddings().parameters()
+        ),
+        lambda a, b: a is b
+    )
+
+
+def freeze_non_embedding_params(model: transformers.PreTrainedModel):
+    for param in model.parameters():
+        param.requires_grad = False
+    embedding_params = list(get_embedding_params(model))
+    for param in embedding_params:
+        param.requires_grad = True
+    return embedding_params
+
+
+def zero_grad_embedding_params(model: transformers.PreTrainedModel, except_token_ids=[]):
+    for param in get_embedding_params(model):
+        for i in range(len(param)):
+            if i not in except_token_ids:
+                param.grad.data[i].fill_(0)  # type: ignore

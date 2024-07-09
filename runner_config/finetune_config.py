@@ -1,0 +1,48 @@
+import os
+
+grids = [
+    {
+        "main_file": ["main.py"],
+        "pretrained_model": ["gpt2", "EleutherAI/pythia-70m", "EleutherAI/pythia-160m", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"][2:3],
+        "data_dir": ["word_use_data/childes/word", "word_use_data/babylm_data/babylm_10M/word", "word_use_data/babylm_data/babylm_100M/word", "word_use_data/ptb_text_only/word"][0:1],
+        "lm": [True],
+        "concat": [False],
+        #"context_length": [128],
+        "new_word": ["<|new_word|>", "<|reserved_special_token_0|>"][:1],
+        "no_new_token": [False],
+        "enforce_single_token": [True],
+        "sep": [" *"],
+        "train_params": ["new_word"],
+        "n_epochs": [15],
+        "batch_size": [8],
+        "n_examples": list(range(10, 11)),
+        "max_sample_times": [0],
+        "eval_n_classes": [tuple(range(2, 7))],
+        "loss_reduction": ["sum"],
+        "lr": [1e-3, 3e-4, 1e-4, 3e-5, 1e-5][1:2],
+        "weight_decay": [0.15, 0.12, 0.10, 0.07, 0.05, 0.][-1:],
+        "factor": [0.1],
+        "patience": [2],
+        "seed": [0],
+        "eval_seed": [0],
+        "logging_step": [100],
+        "eval_step": [500],
+    },
+]
+# ordered flags to display in job name
+flags = [
+    "pretrained_model",
+    "data_dir",
+    #"concat",
+    #"context_length",
+    #"no_new_token",
+    "enforce_single_token",
+    "train_params",
+    "n_examples",
+    "max_sample_times",
+    "batch_size",
+    "lr",
+    "weight_decay",
+    "seed",
+    "eval_step",
+]

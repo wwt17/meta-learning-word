@@ -1,6 +1,7 @@
 from typing import Any, Iterable, TypeVar
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
+import sys
 import argparse
 from pathlib import Path
 from itertools import islice, chain
@@ -15,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
-from utils import frac_repr, to, mix_iter
+from utils import frac_repr, to, mix_iter, freeze_non_embedding_params, zero_grad_embedding_params
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
@@ -60,7 +61,7 @@ model_max_length_attr = {
 }
 
 
-def main(project="meta-learning-word", **kwargs):
+def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
     wandb.init(project=project, **kwargs)
 
     if wandb.config.seed is not None:
@@ -86,6 +87,7 @@ def main(project="meta-learning-word", **kwargs):
             freq_cutoff=wandb.config.freq_cutoff,
         ),
         new_tokens = [args.new_word] if wandb.config.enforce_single_token else None,
+        info_file=info_file,
     )
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
@@ -107,18 +109,25 @@ def main(project="meta-learning-word", **kwargs):
             eos_token_id=tokenizer.eos_token_id,
         )
         model = AutoModelForCausalLM.from_config(config).to(device)
-    print("model config:")
-    print(model.config)
+    print("model config:", file=info_file)
+    print(model.config, file=info_file)
     model_max_length = getattr(model.config, model_max_length_attr[type(model.config)])
     tokenizer.model_max_length = model_max_length  # TODO: have effect only when calling tokenizer(..., truncation=True)
     if wandb.config.context_length is None:
         wandb.config.update(dict(context_length=model_max_length), allow_val_change=True)
     n_params = sum(map(torch.Tensor.nelement, model.parameters()))
-    print(f"model #parameters: {n_params}")
+    print(f"model #parameters: {n_params}", file=info_file)
+    if wandb.config.train_params == "all":
+        trainable_params = list(model.parameters())
+    elif wandb.config.train_params == "new_word":
+        trainable_token_ids = tokenizer(wandb.config.new_word)["input_ids"]
+        trainable_tokens = tokenizer.convert_ids_to_tokens(trainable_token_ids)  # type: ignore
+        print(f"trainable tokens: {trainable_tokens}", file=info_file)
+        trainable_params = freeze_non_embedding_params(model)
 
     loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)  # type: ignore
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)  # type: ignore
-    optimizer = AdamW(model.parameters(), lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
+    optimizer = AdamW(trainable_params, lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=wandb.config.factor, patience=wandb.config.patience)
 
     in_context_format = set_and_get_format(tokenizer, wandb.config)
@@ -210,11 +219,9 @@ def main(project="meta-learning-word", **kwargs):
 
     global best_val_meta_ind_lm_loss
     best_val_meta_ind_lm_loss = np.inf
-    def _evaluate(epoch: int):
+    def _evaluate(scheduler_step: bool = True):
         global best_val_meta_ind_lm_loss
         model.eval()
-
-        wandb.log({"epoch": epoch}, step=step)
 
         if wandb.config.lm:
             val_lm_loss = evaluate_lm(model, val_lm_dataloader, loss_fct)
@@ -238,10 +245,12 @@ def main(project="meta-learning-word", **kwargs):
             print(f"{value_name}={val_cls_acc:.3%}")
             wandb.log({value_name: val_cls_acc}, step=step)
 
-        scheduler.step(val_meta_ind_lm_loss, epoch=epoch)
+        if scheduler_step:
+            scheduler.step(val_meta_ind_lm_loss)
         wandb.log({"lr": scheduler._last_lr[0]}, step=step) # type: ignore
 
-    _evaluate(0)
+    wandb.log({"epoch": 0}, step=step)
+    _evaluate()
 
     print(f'original train meta_dataset size: #episodes: {len(meta_dataset["train"])} #examples: {sum(map(len, meta_dataset["train"]["examples"]))}')
     for epoch_i in range(wandb.config.n_epochs):
@@ -309,6 +318,8 @@ def main(project="meta-learning-word", **kwargs):
                 raise
             loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
             loss.backward()
+            if wandb.config.train_params == "new_word":
+                zero_grad_embedding_params(model, except_token_ids=trainable_token_ids)
             optimizer.step()
             model.zero_grad()
             loss_value = loss.item()
@@ -324,13 +335,17 @@ def main(project="meta-learning-word", **kwargs):
                 print(f"{step=} loss={logging_mean_loss:.6f}")
                 wandb.log({"train_loss_mean": logging_mean_loss}, step=step)
                 logging_loss, logging_n_tokens = 0., 0
+            if wandb.config.eval_step and step % wandb.config.logging_step == 0:
+                _evaluate()
+                save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "last"), model, optimizer, scheduler)
         train_loss = total_loss / total_n_tokens
         print(f"{train_loss=:.6f}")
         wandb.log({"train_loss": train_loss}, step=step)
 
         save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "last"), model, optimizer, scheduler)
 
-        _evaluate(epoch_i+1)
+        wandb.log({"epoch": epoch_i+1}, step=step)
+        _evaluate()
 
 
 if __name__ == "__main__":
@@ -362,7 +377,14 @@ if __name__ == "__main__":
     group = argparser.add_argument_group("In-context format")
     add_format_arguments(group)
     argparser.add_argument(
-        "--config", default="gpt2",
+        "--train_params",
+        choices=["all", "new_word"],
+        default="all",
+        help="Train only these parameters and freeze others. "
+             "new_word: only token embeddings constituting the new word."
+    )
+    argparser.add_argument(
+        "--config",
         help="pretrained_model_name_or_path for AutoConfig."
     )
     argparser.add_argument(
@@ -433,6 +455,9 @@ if __name__ == "__main__":
     )
     argparser.add_argument(
         "--logging_step", type=int, default=100,
+    )
+    argparser.add_argument(
+        "--eval_step", type=int,
     )
     args = argparser.parse_args()
     if args.eval_batch_size is None:

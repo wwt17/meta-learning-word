@@ -259,6 +259,17 @@ def load_tokenizer(
             )
         else:
             raise Exception(f"Must provide name_or_path for the tokenizer")
+    if tokenizer.pad_token_id is None:
+        for pad_token in [
+            "<|padding|>",
+        ]:
+            if pad_token in tokenizer.vocab:  # type: ignore
+                break
+        else:
+            print("Warning: use eos token as pad token", file=info_file)
+            pad_token = tokenizer.eos_token
+        tokenizer.pad_token = pad_token
+        print(f"set tokenizer pad token to {tokenizer.pad_token} with id {tokenizer.pad_token_id}", file=info_file)
     print(f"tokenizer: {name_or_path}", file=info_file)
     print(f"tokenizer size: {len(tokenizer)}", file=info_file)
     if new_tokens is not None:
