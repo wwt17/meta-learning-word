@@ -335,7 +335,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
                 print(f"{step=} loss={logging_mean_loss:.6f}")
                 wandb.log({"train_loss_mean": logging_mean_loss}, step=step)
                 logging_loss, logging_n_tokens = 0., 0
-            if wandb.config.eval_step and step % wandb.config.logging_step == 0:
+            if wandb.config.eval_step and step % wandb.config.eval_step == 0:
                 _evaluate()
                 save_checkpoint(Path(wandb.config.ckpt_dir, kwargs["name"], "last"), model, optimizer, scheduler)
         train_loss = total_loss / total_n_tokens
