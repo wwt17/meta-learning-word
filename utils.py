@@ -359,6 +359,6 @@ def freeze_non_embedding_params(model: transformers.PreTrainedModel):
 
 def zero_grad_embedding_params(model: transformers.PreTrainedModel, except_token_ids=[]):
     for param in get_embedding_params(model):
-        for i in range(len(param)):
-            if i not in except_token_ids:
-                param.grad.data[i].fill_(0)  # type: ignore
+        mask = torch.ones_like(param.grad.data, dtype=torch.bool)  # type: ignore
+        mask[except_token_ids] = False
+        param.grad.data[mask] = 0  # type: ignore
