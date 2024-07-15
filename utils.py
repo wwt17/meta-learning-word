@@ -330,6 +330,24 @@ def get_embedding_params(model: transformers.PreTrainedModel):
     )
 
 
+def initialize_new_token_embeddings(
+        model: transformers.PreTrainedModel,
+        n_new_tokens: int,
+        method: str,
+):
+    if method == "none":
+        return
+    for param in get_embedding_params(model):
+        _requires_grad = param.requires_grad
+        param.requires_grad = False
+        if method == "mean":
+            mean = param[:-n_new_tokens].mean(0).detach()
+            param[-n_new_tokens:] = mean
+        else:
+            raise ValueError(f"Unknown embedding intialization method: {method}")
+        param.requires_grad = _requires_grad
+
+
 def freeze_non_embedding_params(model: transformers.PreTrainedModel):
     for param in model.parameters():
         param.requires_grad = False

@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, LlamaConfig, set_seed
-from utils import frac_repr, to, mix_iter, freeze_non_embedding_params, zero_grad_embedding_params
+from utils import frac_repr, to, mix_iter, initialize_new_token_embeddings, freeze_non_embedding_params, zero_grad_embedding_params
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
@@ -101,7 +101,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         )
         if n_added_tokens:
             model.resize_token_embeddings(len(tokenizer))
-        # TODO: initialize new token embeddings
+            initialize_new_token_embeddings(model, n_added_tokens, wandb.config.embedding_init)
     else:
         config = AutoConfig.from_pretrained(
             wandb.config.config,

@@ -21,6 +21,14 @@ def add_format_arguments(argparser):
              "If necessary, will add new tokens to the vocabulary."
     )
     argparser.add_argument(
+        "--embedding_init", choices=["none", "mean"], default="none",
+        help=r'Initialization method of embeddings of added new tokens. '
+             r'"none" for default initialization in '
+             r'`model.resize_token_embeddings`, which is a sample from the '
+             r'initialization distribution; '
+             r'"mean" for mean of all pretrained embeddings.'
+    )
+    argparser.add_argument(
         "--prompt", default="",
         help="Prompt before examples."
     )
