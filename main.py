@@ -15,7 +15,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
-from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, set_seed
+from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, LlamaConfig, set_seed
 from utils import frac_repr, to, mix_iter, freeze_non_embedding_params, zero_grad_embedding_params
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
 from in_context_format import InContextFormat, add_format_arguments
@@ -58,6 +58,7 @@ def concat_lm_collate(batch):
 model_max_length_attr = {
     GPT2Config: "n_ctx",
     GPTNeoXConfig: "max_position_embeddings",
+    LlamaConfig: "max_position_embeddings",
 }
 
 
