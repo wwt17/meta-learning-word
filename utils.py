@@ -357,8 +357,16 @@ def freeze_non_embedding_params(model: transformers.PreTrainedModel):
     return embedding_params
 
 
-def zero_grad_embedding_params(model: transformers.PreTrainedModel, except_token_ids=[]):
-    for param in get_embedding_params(model):
-        mask = torch.ones_like(param.grad.data, dtype=torch.bool)  # type: ignore
+def zero_grad_embedding_params(model: transformers.PreTrainedModel, except_token_ids=[], vocab_size=None, mask=None):
+    if vocab_size is None:
+        vocab_size = next(get_embedding_params(model)).size(0)
+
+    if mask is None:
+        mask = torch.ones(vocab_size, dtype=torch.bool, device=model.device)
         mask[except_token_ids] = False
+    else:
+        assert vocab_size == mask.size(0)
+
+    for param in get_embedding_params(model):
+        assert param.size(0) == vocab_size, f"Unexpected embedding parameter size {param.size()}"
         param.grad.data[mask] = 0  # type: ignore
