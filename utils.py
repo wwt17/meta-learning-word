@@ -332,8 +332,9 @@ def get_embedding_params(model: transformers.PreTrainedModel):
 
 def initialize_new_token_embeddings(
         model: transformers.PreTrainedModel,
-        n_new_tokens: int,
+        new_token_ids,
         method: str,
+        old_vocab_size: Optional[int] = None,
 ):
     if method == "none":
         return
@@ -341,8 +342,9 @@ def initialize_new_token_embeddings(
         _requires_grad = param.requires_grad
         param.requires_grad = False
         if method == "mean":
-            mean = param[:-n_new_tokens].mean(0).detach()
-            param[-n_new_tokens:] = mean
+            assert old_vocab_size is not None, "Must provide old_vocab_size for mean"
+            mean = param[:old_vocab_size].mean(0).detach()
+            param[new_token_ids] = mean
         else:
             raise ValueError(f"Unknown embedding intialization method: {method}")
         param.requires_grad = _requires_grad

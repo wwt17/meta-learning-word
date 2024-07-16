@@ -91,6 +91,10 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         info_file=info_file,
     )
 
+    new_word_token_ids = tokenizer(wandb.config.new_word)["input_ids"]
+    new_word_tokens = tokenizer.convert_ids_to_tokens(new_word_token_ids)  # type: ignore
+    print(f"new word tokens: {new_word_tokens}", file=info_file)
+
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
 
     if wandb.config.pretrained_model is not None:
@@ -101,7 +105,12 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         )
         if n_added_tokens:
             model.resize_token_embeddings(len(tokenizer))
-            initialize_new_token_embeddings(model, n_added_tokens, wandb.config.embedding_init)
+        initialize_new_token_embeddings(
+            model,
+            new_word_token_ids,
+            wandb.config.embedding_init,
+            old_vocab_size = len(tokenizer) - n_added_tokens,
+        )
     else:
         config = AutoConfig.from_pretrained(
             wandb.config.config,
@@ -121,7 +130,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
     if wandb.config.train_params == "all":
         trainable_params = list(model.parameters())
     elif wandb.config.train_params == "new_word":
-        trainable_token_ids = tokenizer(wandb.config.new_word)["input_ids"]
+        trainable_token_ids = new_word_token_ids
         trainable_tokens = tokenizer.convert_ids_to_tokens(trainable_token_ids)  # type: ignore
         print(f"trainable tokens: {trainable_tokens}", file=info_file)
         trainable_params = freeze_non_embedding_params(model)
