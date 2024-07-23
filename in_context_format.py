@@ -3,6 +3,9 @@ from utils import example_str
 from text_configs import NEW_TOKEN
 
 
+format_str_attrs = ["new_word", "prompt", "sep"]
+
+
 def add_format_arguments(argparser):
     argparser.add_argument(
         "--new_word", default=NEW_TOKEN,

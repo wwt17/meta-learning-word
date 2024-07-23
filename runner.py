@@ -88,6 +88,8 @@ for job in jobs:
     job_name_for_log = args.job_name_base
     for flag in flags:
         value = job[flag]
+        if isinstance(value, (list, tuple)):
+            value = "_".join(value)
         if isinstance(value, str):
             value = value.replace("/", ":")
         s = f"_{flag}_{value}"

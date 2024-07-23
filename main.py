@@ -18,7 +18,7 @@ import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, LlamaConfig, set_seed
 from utils import frac_repr, to, mix_iter, initialize_new_token_embeddings, freeze_non_embedding_params, zero_grad_embedding_params
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
-from in_context_format import InContextFormat, add_format_arguments
+from in_context_format import InContextFormat, add_format_arguments, format_str_attrs
 from evaluation_cls import cls_collate_fn, evaluate_cls
 from concat_lm_dataset import ConcatLMDataset
 
@@ -87,13 +87,17 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             lm_dataset=lm_dataset,
             freq_cutoff=wandb.config.freq_cutoff,
         ),
-        new_tokens = [args.new_word] if wandb.config.enforce_single_token else None,
+        new_tokens = [wandb.config.new_word, wandb.config.sep] if wandb.config.enforce_single_token else None,
         info_file=info_file,
     )
 
-    new_word_token_ids = tokenizer(wandb.config.new_word)["input_ids"]
-    new_word_tokens = tokenizer.convert_ids_to_tokens(new_word_token_ids)  # type: ignore
-    print(f"new word tokens: {new_word_tokens}", file=info_file)
+    trainable_token_ids: list[int] = []
+    for format_str_attr in format_str_attrs:
+        token_ids: list[int] = tokenizer(wandb.config[format_str_attr])["input_ids"]  # type: ignore
+        tokens = tokenizer.convert_ids_to_tokens(token_ids)  # type: ignore
+        print(f"{format_str_attr} tokens: {tokens}", file=info_file)
+        if format_str_attr in wandb.config.train_params:
+            trainable_token_ids += token_ids
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
 
@@ -107,7 +111,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             model.resize_token_embeddings(len(tokenizer))
         initialize_new_token_embeddings(
             model,
-            new_word_token_ids,
+            trainable_token_ids,
             wandb.config.embedding_init,
             old_vocab_size = len(tokenizer) - n_added_tokens,
         )
@@ -127,10 +131,9 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         wandb.config.update(dict(context_length=model_max_length), allow_val_change=True)
     n_params = sum(map(torch.Tensor.nelement, model.parameters()))
     print(f"model #parameters: {n_params}", file=info_file)
-    if wandb.config.train_params == "all":
+    if "all" in wandb.config.train_params:
         trainable_params = list(model.parameters())
-    elif wandb.config.train_params == "new_word":
-        trainable_token_ids = new_word_token_ids
+    else:
         trainable_tokens = tokenizer.convert_ids_to_tokens(trainable_token_ids)  # type: ignore
         print(f"trainable tokens: {trainable_tokens}", file=info_file)
         trainable_params = freeze_non_embedding_params(model)
@@ -185,7 +188,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
     val_meta_ind_dataset = sample_examples(
         meta_dataset["validation"],
         wandb.config.n_examples,
-        max_sample_times=args.max_sample_times,
+        max_sample_times=wandb.config.max_sample_times,
         rng=np.random.default_rng(wandb.config.eval_seed)
     )
     val_meta_unique_dataset = sample_examples(
@@ -271,7 +274,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             max_sample_times=wandb.config.max_sample_times,
         )
         print(f'train meta_dataset size: #episodes: {len(train_meta_dataset)} #examples: {sum(map(len, train_meta_dataset["examples"]))}')
-        if args.concat:
+        if wandb.config.concat:
             print("Concatenate all examples")
             train_meta_dataset = sample_examples(train_meta_dataset, 1, rng=None)  # flatten examples
             train_meta_dataset = train_meta_dataset.map(partial(in_context_format.construct_meta_lm_example, start_with_sep=False))
@@ -388,10 +391,12 @@ if __name__ == "__main__":
     add_format_arguments(group)
     argparser.add_argument(
         "--train_params",
-        choices=["all", "new_word"],
-        default="all",
-        help="Train only these parameters and freeze others. "
-             "new_word: only token embeddings constituting the new word."
+        nargs = "+",
+        choices = ["all"] + format_str_attrs,
+        default = ["all"],
+        help = r"Train only these parameters and freeze others. "
+               r"all: all parameters (default); "
+               f"*others* ({', '.join(format_str_attrs)}): token embeddings constituting these parts."
     )
     argparser.add_argument(
         "--config",

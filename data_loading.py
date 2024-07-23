@@ -229,6 +229,11 @@ def load_data_tokenizer(
     return tokenizer
 
 
+def is_single_token_in_vocab(tokenizer, s):
+    token_ids = tokenizer(s)['input_ids']
+    return len(token_ids) == 1 and token_ids[0] != tokenizer.unk_token_id
+
+
 def load_tokenizer(
         name_or_path,
         revision=None,
@@ -273,7 +278,8 @@ def load_tokenizer(
     print(f"tokenizer: {name_or_path}", file=info_file)
     print(f"tokenizer size: {len(tokenizer)}", file=info_file)
     if new_tokens is not None:
-        n_added_tokens = tokenizer.add_tokens(new_tokens)
+        _new_tokens = list(filter(lambda token: not is_single_token_in_vocab(tokenizer, token), new_tokens))
+        n_added_tokens = tokenizer.add_tokens(_new_tokens)
         print(f"added {n_added_tokens} tokens in {new_tokens}", file=info_file)
         print(f"tokenizer size: {len(tokenizer)}", file=info_file)
     else:
