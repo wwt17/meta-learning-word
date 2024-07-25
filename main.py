@@ -87,7 +87,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             lm_dataset=lm_dataset,
             freq_cutoff=wandb.config.freq_cutoff,
         ),
-        new_tokens = [wandb.config.new_word, wandb.config.sep] if wandb.config.enforce_single_token else None,
+        new_tokens=wandb.config.add_tokens,
         info_file=info_file,
     )
 

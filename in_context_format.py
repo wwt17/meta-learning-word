@@ -19,11 +19,6 @@ def add_format_arguments(argparser):
         help="Do not replace the meta-learned word with the new word."
     )
     argparser.add_argument(
-        "--enforce_single_token", action="store_true",
-        help="Enforce the new word is tokenized as a single token. "
-             "If necessary, will add new tokens to the vocabulary."
-    )
-    argparser.add_argument(
         "--embedding_init", choices=["none", "mean"], default="none",
         help=r'Initialization method of embeddings of added new tokens. '
              r'"none" for default initialization in '
@@ -43,6 +38,10 @@ def add_format_arguments(argparser):
     argparser.add_argument(
         "--prepend", default=" ",
         help="Prepend this string to each example."
+    )
+    argparser.add_argument(
+        "--add_tokens", nargs="*",
+        help="Add tokens to the tokenizer."
     )
 
 

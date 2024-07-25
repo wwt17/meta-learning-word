@@ -119,7 +119,7 @@ if __name__ == "__main__":
     tokenizer, n_added_tokens = load_tokenizer(
         args.tokenizer if args.tokenizer is not None else args.pretrained_model,
         revision=args.revision,
-        new_tokens = [args.new_word] if args.enforce_single_token else None,
+        new_tokens=args.add_tokens,
     )
 
     in_context_format = set_and_get_format(tokenizer, args)
