@@ -64,7 +64,7 @@ def get_nll_matrix(prefix_input, suffix_input, model, loss_fct):
     return nll_matrix
 
 
-def evaluate_cls(model, dataloader, loss_fct) -> float:
+def evaluate_cls(model, dataloader, loss_fct) -> tuple[int, int]:
     """Evaluate classification.
     Args:
         model: the LM to evaluate.
@@ -72,7 +72,7 @@ def evaluate_cls(model, dataloader, loss_fct) -> float:
             prefix to each suffix.
         loss_fct: CrossEntropyLoss with reduction="none".
     Return:
-        Accuracy.
+        Accuracy in the fractional form (n_acc, n)
     """
     device = get_device(model)
     n_acc, n = 0, 0
@@ -86,11 +86,11 @@ def evaluate_cls(model, dataloader, loss_fct) -> float:
             nll_matrix = get_nll_matrix(prefix_input, suffix_input, model, loss_fct)
             pred_cls = nll_matrix.argmin(dim=0)
             acc = pred_cls == torch.arange(batch_size, device=pred_cls.device)
-            batch_n_acc = acc.sum().item()
+            batch_n_acc: int = acc.sum().item()  # type: ignore
             n_acc += batch_n_acc
             n += batch_size
 
-    return n_acc / n
+    return (n_acc, n)
 
 
 if __name__ == "__main__":

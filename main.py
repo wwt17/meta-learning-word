@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, LlamaConfig, set_seed
-from utils import frac_repr, to, mix_iter, initialize_new_token_embeddings, freeze_non_embedding_params, zero_grad_embedding_params
+from utils import frac_repr, frac_tuple_to_float, to, mix_iter, initialize_new_token_embeddings, freeze_non_embedding_params, zero_grad_embedding_params
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
 from in_context_format import InContextFormat, add_format_arguments, format_str_attrs
 from evaluation_cls import cls_collate_fn, evaluate_cls
@@ -255,8 +255,8 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         for n_classes, val_meta_cls_dataloader in val_meta_cls_dataloaders.items():
             value_name = f"val_cls_{n_classes}_acc"
             val_cls_acc = evaluate_cls(model, val_meta_cls_dataloader, raw_loss_fct)
-            print(f"{value_name}={val_cls_acc:.3%}")
-            wandb.log({value_name: val_cls_acc}, step=step)
+            print(f"{value_name}={frac_repr(*val_cls_acc, prec=3)}")
+            wandb.log({value_name: frac_tuple_to_float(val_cls_acc)}, step=step)
 
         if scheduler_step:
             scheduler.step(val_meta_ind_lm_loss)

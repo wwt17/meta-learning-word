@@ -15,6 +15,7 @@ from transformers import AutoModelForCausalLM, set_seed
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
+from utils import frac_repr
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -148,12 +149,14 @@ if __name__ == "__main__":
             prepend=args.prepend,
         )
     )
+    print(f'val_n_words: {len(dataset["validation"])}')
     val_dataset = sample_examples(
         dataset["validation"],
         args.n_examples,
         max_sample_times=args.max_sample_times,
         rng=np.random.default_rng(args.seed),
     )
+    print(f'val_n_episodes: {len(val_dataset)}')
     val_cls_dataset = val_dataset.map(in_context_format.construct_meta_cls_example)
     val_cls_dataloaders = {
         n_classes: DataLoader(
@@ -169,7 +172,7 @@ if __name__ == "__main__":
     for n_classes, val_cls_dataloader in val_cls_dataloaders.items():
         value_name = f"val_cls_{n_classes}_acc"
         val_cls_acc = evaluate_cls(model, val_cls_dataloader, raw_loss_fct)
-        print(f"{value_name}={val_cls_acc:.3%}")
+        print(f"{value_name}={frac_repr(*val_cls_acc, prec=3)}")
 
     try:
         for i, item in enumerate(val_cls_dataset):

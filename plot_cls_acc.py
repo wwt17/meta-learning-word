@@ -27,13 +27,15 @@ def read_cls_acc(result_files, chance=False):
         try:
             with open(result_file, "r") as f:
                 for line in f:
-                    match = re.fullmatch(r"val_cls_(\d+)_acc=([0-9\.]*)%", line.strip())
-                    if match is None:
+                    if not line.startswith("val_"):
                         break
+                    match = re.fullmatch(r"val_cls_(?P<n_cls>\d+)_acc=(|(\d+/\d+)=)(?P<acc_pct>[\d\.]*)%", line.strip())
+                    if match is None:
+                        continue
                     record = copy.copy(config)
                     record.update({
-                        "#classes": int(match[1]),
-                        "Accuracy (%)": float(match[2]),
+                        "#classes": int(match["n_cls"]),
+                        "Accuracy (%)": float(match["acc_pct"]),
                     })
                     records.append(record)
         except FileNotFoundError:

@@ -18,6 +18,11 @@ def frac_repr(a, b, prec=2):
     return f"{a}/{b}={a/b:.{prec}%}"
 
 
+def frac_tuple_to_float(t):
+    a, b = t
+    return a / b
+
+
 def normalize_dict(d):
     sum_value = sum(d.values())
     return {key: value / sum_value for key, value in d.items()}
