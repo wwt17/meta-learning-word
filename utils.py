@@ -364,13 +364,18 @@ def freeze_non_embedding_params(model: transformers.PreTrainedModel):
     return embedding_params
 
 
+def get_frozen_tokens_mask(vocab_size: int, except_token_ids, device):
+    mask = torch.ones(vocab_size, dtype=torch.bool, device=device)
+    mask[except_token_ids] = False
+    return mask
+
+
 def zero_grad_embedding_params(model: transformers.PreTrainedModel, except_token_ids=[], vocab_size=None, mask=None):
     if vocab_size is None:
         vocab_size = next(get_embedding_params(model)).size(0)
 
     if mask is None:
-        mask = torch.ones(vocab_size, dtype=torch.bool, device=model.device)
-        mask[except_token_ids] = False
+        mask = get_frozen_tokens_mask(vocab_size, except_token_ids, model.device)
     else:
         assert vocab_size == mask.size(0)
 

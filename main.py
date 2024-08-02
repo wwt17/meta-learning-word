@@ -16,7 +16,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, default_collate
 import transformers
 from transformers import DataCollatorForLanguageModeling, AutoModelForCausalLM, AutoTokenizer, AutoConfig, GPT2Config, GPTNeoXConfig, LlamaConfig, set_seed
-from utils import frac_repr, frac_tuple_to_float, to, mix_iter, initialize_new_token_embeddings, freeze_non_embedding_params, zero_grad_embedding_params
+from utils import frac_repr, frac_tuple_to_float, to, mix_iter, initialize_new_token_embeddings, freeze_non_embedding_params, zero_grad_embedding_params, get_frozen_tokens_mask
 from data_loading import load_dataset, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples, sample_lm_seq
 from in_context_format import InContextFormat, add_format_arguments, format_str_attrs
 from evaluation_cls import cls_collate_fn, evaluate_cls
@@ -131,7 +131,8 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         wandb.config.update(dict(context_length=model_max_length), allow_val_change=True)
     n_params = sum(map(torch.Tensor.nelement, model.parameters()))
     print(f"model #parameters: {n_params}", file=info_file)
-    if "all" in wandb.config.train_params:
+    train_all_params = "all" in wandb.config.train_params
+    if train_all_params:
         trainable_params = list(model.parameters())
     else:
         trainable_tokens = tokenizer.convert_ids_to_tokens(trainable_token_ids)  # type: ignore
@@ -266,6 +267,12 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
     _evaluate()
 
     print(f'original train meta_dataset size: #episodes: {len(meta_dataset["train"])} #examples: {sum(map(len, meta_dataset["train"]["examples"]))}')
+    if not train_all_params:
+        frozen_tokens_mask = get_frozen_tokens_mask(
+            len(tokenizer),
+            trainable_token_ids,
+            model.device,
+        )
     for epoch_i in range(wandb.config.n_epochs):
         print(f"Epoch {epoch_i}:")
         train_meta_dataset = sample_examples(
@@ -331,10 +338,15 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
                 raise
             loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
             loss.backward()
-            if wandb.config.train_params == "new_word":
-                zero_grad_embedding_params(model, except_token_ids=trainable_token_ids)
+            if not train_all_params:
+                zero_grad_embedding_params(
+                    model,
+                    except_token_ids=trainable_token_ids,
+                    vocab_size=len(tokenizer),
+                    mask=frozen_tokens_mask,
+                )
             optimizer.step()
-            model.zero_grad()
+            optimizer.zero_grad()
             loss_value = loss.item()
             n_tokens = batch["attention_mask"][..., 1:].sum().item()
             wandb.log({"train_loss_step": loss_value/n_tokens}, step=step)
