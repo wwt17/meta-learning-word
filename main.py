@@ -349,6 +349,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             optimizer.zero_grad()
             loss_value = loss.item()
             n_tokens = batch["attention_mask"][..., 1:].sum().item()
+            del batch, outputs, loss
             wandb.log({"train_loss_step": loss_value/n_tokens}, step=step)
             total_loss += loss_value
             total_n_tokens += n_tokens
