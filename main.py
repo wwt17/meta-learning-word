@@ -1,4 +1,4 @@
-from typing import Any, Iterable, TypeVar
+from typing import Any, Callable, Iterable, TypeVar
 from collections.abc import Sequence, Mapping, Sized
 from collections import Counter, defaultdict
 import sys
@@ -156,6 +156,8 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             shuffle=True,
             seed=None,
             n_examples=wandb.config.n_examples,
+            in_context_format=in_context_format,
+            tokenizer: Callable = tokenizer,
     ):
         if shuffle:
             dataset = dataset.shuffle(seed=seed)
@@ -302,7 +304,17 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
             )
             train_lm_dataloader = None  # TODO: implement train_lm_dataloader
         else:
-            train_meta_dataset = train_meta_dataset.map(in_context_format.construct_meta_lm_example).map(lambda batch: tokenizer(batch["examples"]), batched=True, remove_columns=["word", "examples"])
+            train_tokenizer = tokenizer
+            if wandb.config.train_max_length is not None:
+                train_tokenizer = partial(train_tokenizer, truncation=True, max_length=wandb.config.train_max_length)
+            train_meta_dataset = (train_meta_dataset
+                .map(in_context_format.construct_meta_lm_example)
+                .map(
+                    lambda batch: train_tokenizer(batch["examples"]),
+                    batched=True,
+                    remove_columns=["word", "examples"]
+                )
+            )
             train_meta_dataloader = DataLoader(
                 train_meta_dataset, # type: ignore
                 batch_size=wandb.config.batch_size,
@@ -315,6 +327,7 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
                     lm_dataset["train"],
                     wandb.config.batch_size,
                     drop_last=True,
+                    tokenizer=train_tokenizer,
                 )
             else:
                 train_lm_dataloader = None
@@ -326,27 +339,27 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         model.train()
         for batch in train_dataloader:
             batch = to(batch, device)
+            input_ids = batch["input_ids"]
+            print(f"{input_ids.shape=}", file=info_file)
             try:
                 outputs = model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+                loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
+                loss.backward()
+                if not train_all_params:
+                    zero_grad_embedding_params(
+                        model,
+                        except_token_ids=trainable_token_ids,
+                        vocab_size=len(tokenizer),
+                        mask=frozen_tokens_mask,
+                    )
+                optimizer.step()
+                optimizer.zero_grad()
             except:
-                input_ids = batch["input_ids"]
-                print(f"{input_ids.shape=}")
                 decoded_input = tokenizer.batch_decode(input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
-                print("input:")
+                print("input:", file=info_file)
                 for s in decoded_input:
-                    print(s)
+                    print(s, file=info_file)
                 raise
-            loss = loss_fct(outputs.logits[..., :-1, :].movedim(-1, 1), batch["input_ids"][..., 1:])
-            loss.backward()
-            if not train_all_params:
-                zero_grad_embedding_params(
-                    model,
-                    except_token_ids=trainable_token_ids,
-                    vocab_size=len(tokenizer),
-                    mask=frozen_tokens_mask,
-                )
-            optimizer.step()
-            optimizer.zero_grad()
             loss_value = loss.item()
             n_tokens = batch["attention_mask"][..., 1:].sum().item()
             del batch, outputs, loss
@@ -426,6 +439,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--context_length", type=int,
         help="Context length used in training LM on concatenated text."
+    )
+    argparser.add_argument(
+        "--train_max_length", type=int,
+        help="Truncate training sequences to this length."
     )
     argparser.add_argument(
         "--freq_cutoff", type=int, default=4,
