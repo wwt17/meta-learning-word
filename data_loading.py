@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Union, Optional, Any
 from collections.abc import Iterable, Sequence, Mapping, Sized
 import os
 import sys
@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import datasets
 import tokenizers
-from transformers import AutoTokenizer, PreTrainedTokenizerFast
+from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 from utils import frac_repr, zipdict, batchify, cache, count_tokens, sorted_counter_dict, example_str, clean_up_tokenization_spaces_for_example, prepend_to_example
-from in_context_format import InContextFormat
+from in_context_format import InContextFormat, add_format_arguments
 from text_configs import PAD_TOKEN, UNK_TOKEN, SEP_TOKEN, NEW_TOKEN, SPECIAL_TOKENS, NEW_TOKENS
 
 
@@ -289,7 +289,9 @@ def load_tokenizer(
 
 def set_and_get_format(tokenizer, args):
     t = None if args.no_new_token else args.new_word
-    if not is_data_tokenizer(tokenizer):  # pretrained tokenizer
+    if tokenizer is None:
+        sep = "\n" + args.sep
+    elif not is_data_tokenizer(tokenizer):  # pretrained tokenizer
         sep = "\n" + args.sep
         tokenizer.pad_token = tokenizer.eos_token
     else:  # my own tokenizer
@@ -360,8 +362,9 @@ def uses_stats(data: datasets.Dataset, path, title: str, n_uses_range=None, plot
 def dataset_stats(
         meta_dataset: datasets.DatasetDict,
         lm_dataset: datasets.DatasetDict,
-        tokenizer: PreTrainedTokenizerFast,
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
         path,
+        t,
         length_range=None,
         n_uses_range=None,
 ):
@@ -369,7 +372,7 @@ def dataset_stats(
     for split, data in meta_dataset.items():
         print(f"{split} split:")
         uses_stats(data, path, f"meta learning word n_uses {split} distribution", n_uses_range=n_uses_range)
-        sentence_stats(get_meta_data_sentences(data, t=NEW_TOKEN), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
+        sentence_stats(get_meta_data_sentences(data, t=t), tokenizer, path, f"meta learning sentence length {split} distribution", length_range=length_range)
 
     print("lm data:")
     for split, data in lm_dataset.items():
@@ -391,16 +394,21 @@ def interactive_classification(
         n_class: int,
         n_study_examples: int,
         max_sample_times: int,
-        t: Optional[str],
-        tokenizer: Optional[PreTrainedTokenizerFast] = None,
+        in_context_format: InContextFormat,
+        tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
+        clean_up_tokenization_spaces: bool = False,
         seed: Optional[int] = None,
 ):
     np.random.seed(seed)
     rng = np.random.default_rng(seed=seed)
 
-    _example_str = lambda example: example_str(example, t)
+    _example_str = lambda example: example_str(example, in_context_format.t)
     if tokenizer is not None:
-        _example_str = lambda example: tokenized_text(tokenizer, example_str(example, t))
+        _example_str = lambda example: tokenized_text(
+            tokenizer,
+            example_str(example, in_context_format.t),
+            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+        )
 
     n_episodes = 0
     while True:
@@ -454,19 +462,18 @@ if __name__ == "__main__":
         "mode", choices=["stat", "class"],
     )
     argparser.add_argument(
-        "--data", type=Path,
+        "--data_dir", type=Path,
         default=Path("word_use_data", "childes", "word"),
-        help="Dataset to load. In stat mode, should be the dataset directory; "
-             "In class mode, should be the json file containing the split."
+        help="Path to the dataset."
     )
     argparser.add_argument(
         "--split",
         default="train",
-        help="Which split to use in classification mode."
+        help="Which split to use."
     )
     argparser.add_argument(
-        "--tokenize", action="store_true",
-        help="Tokenize the text in classification mode."
+        "--tokenizer",
+        help="Tokenizer to use. If it is 'build' (default in stat mode), build (but not cache) the data tokenizer."
     )
     argparser.add_argument(
         "--freq_cutoff", type=int, default=0,
@@ -496,29 +503,58 @@ if __name__ == "__main__":
         "--max_sample_times", type=int, default=1,
         help="Max sample times per word."
     )
+    group = argparser.add_argument_group("In-context format")
+    add_format_arguments(
+        group,
+        new_word = " " + NEW_TOKEN,
+        sep = " *",
+    )
     argparser.add_argument(
-        "--new_word", default=NEW_TOKEN,
-        help="Replace word with this."
+        "--clean_up_tokenization_spaces", action="store_true",
+        help="Clean up tokenization spaces. Only useful and better for non-word-based tokenizer."
     )
     argparser.add_argument(
         "--seed", type=int,
         help="Random seed."
     )
     args = argparser.parse_args()
+    if args.mode == "stat" and args.tokenizer is None:
+        args.tokenizer = "build"
 
     meta_dataset, lm_dataset = load_dataset(
-        args.data,
+        args.data_dir,
+        meta_dataset_kwargs = dict(
+            clean_up_tokenization_spaces = args.clean_up_tokenization_spaces and args.tokenizer != "build",
+            prepend = args.prepend,
+        )
     )
-    tokenizer = load_data_tokenizer(
-        meta_dataset,
-        lm_dataset,
+    data_tokenizer_kwargs = dict(
+        meta_dataset = meta_dataset,
+        lm_dataset = lm_dataset,
         freq_cutoff = args.freq_cutoff,
         exclude_meta_words = not args.include_meta_words,
     )
+    if args.tokenizer is None:
+        tokenizer = None
+    elif args.tokenizer == "build":
+        tokenizer = load_data_tokenizer(
+            **data_tokenizer_kwargs,  # type: ignore
+        )
+    else:
+        tokenizer, n_added_tokens = load_tokenizer(
+            args.tokenizer,
+            data_tokenizer_kwargs=data_tokenizer_kwargs,
+        )
+
+    in_context_format = set_and_get_format(tokenizer, args)
 
     if args.mode == "stat":
         dataset_stats(
-            meta_dataset, lm_dataset, tokenizer, args.data,
+            meta_dataset,
+            lm_dataset,
+            tokenizer,  # type: ignore
+            args.data_dir,
+            in_context_format.t,
             length_range = args.length_range,
             n_uses_range = args.n_uses_range,
         )
@@ -529,8 +565,9 @@ if __name__ == "__main__":
             args.n_class,
             args.n_study_examples,
             args.max_sample_times,
-            args.new_word,
-            tokenizer = tokenizer if args.tokenize else None,
+            in_context_format,
+            tokenizer = tokenizer,
+            clean_up_tokenization_spaces = args.clean_up_tokenization_spaces,
             seed = args.seed,
         )
 

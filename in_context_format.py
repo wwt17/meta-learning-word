@@ -6,9 +6,16 @@ from text_configs import NEW_TOKEN
 format_str_attrs = ["new_word", "prompt", "sep"]
 
 
-def add_format_arguments(argparser):
+def add_format_arguments(
+        argparser,
+        new_word=NEW_TOKEN,
+        embedding_init="none",
+        prompt="",
+        sep="",
+        prepend=" ",
+):
     argparser.add_argument(
-        "--new_word", default=NEW_TOKEN,
+        "--new_word", default=new_word,
         help="Replace the meta-learned word with this. "
              "For tokenizers incorporating leading spaces into first tokens of "
              "words, if this is not a special token, this should also have a "
@@ -19,7 +26,7 @@ def add_format_arguments(argparser):
         help="Do not replace the meta-learned word with the new word."
     )
     argparser.add_argument(
-        "--embedding_init", choices=["none", "mean"], default="none",
+        "--embedding_init", choices=["none", "mean"], default=embedding_init,
         help=r'Initialization method of embeddings of added new tokens. '
              r'"none" for default initialization in '
              r'`model.resize_token_embeddings`, which is a sample from the '
@@ -27,16 +34,16 @@ def add_format_arguments(argparser):
              r'"mean" for mean of all pretrained embeddings.'
     )
     argparser.add_argument(
-        "--prompt", default="",
+        "--prompt", default=prompt,
         help="Prompt before examples."
     )
     argparser.add_argument(
-        "--sep", default="",
+        "--sep", default=sep,
         help=r'The separator between examples. '
              r'Use "\n"+sep as the separator for pretrained models.'
     )
     argparser.add_argument(
-        "--prepend", default=" ",
+        "--prepend", default=prepend,
         help="Prepend this string to each example."
     )
     argparser.add_argument(
