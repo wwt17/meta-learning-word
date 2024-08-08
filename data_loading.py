@@ -402,14 +402,6 @@ def interactive_classification(
     np.random.seed(seed)
     rng = np.random.default_rng(seed=seed)
 
-    _example_str = lambda example: example_str(example, in_context_format.t)
-    if tokenizer is not None:
-        _example_str = lambda example: tokenized_text(
-            tokenizer,
-            example_str(example, in_context_format.t),
-            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-        )
-
     n_episodes = 0
     while True:
         try:
@@ -420,17 +412,37 @@ def interactive_classification(
                 batch_size = len(word_examples_batch)
                 for idx, item in enumerate(word_examples_batch):
                     word, examples = item["word"], item["examples"]
-                    print(f"word #{idx+1}:")
-                    for j, example in enumerate(examples[:-1]):
-                        sent = _example_str(example)
-                        print(4*" " + f"example #{j+1}: " + sent)
+                    text = in_context_format.concat_examples(
+                        examples[:-1],
+                        start_with_sep=True,
+                        end_with_sep=False,
+                        start_index=1,
+                    )
+                    if tokenizer is not None:
+                        text = tokenized_text(
+                            tokenizer,
+                            text,
+                            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                        )
+                    print(f"word #{idx+1}:" + text)
                 indices = list(range(batch_size))
                 np.random.shuffle(indices) # type: ignore
                 print("predict:")
                 for i, idx in enumerate(indices):
-                    example = word_examples_batch[idx]["examples"][-1]
-                    sent = _example_str(example)
-                    print(f"{i+1}. " + sent)
+                    examples = word_examples_batch[idx]["examples"]
+                    text = in_context_format.concat_examples(
+                        examples[-1:],
+                        start_with_sep=False,
+                        end_with_sep=False,
+                        start_index=n_study_examples+1,
+                    )
+                    if tokenizer is not None:
+                        text = tokenized_text(
+                            tokenizer,
+                            text,
+                            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                        )
+                    print(f"{i+1}. " + text)
 
                 while True:
                     try:
@@ -509,6 +521,9 @@ if __name__ == "__main__":
         new_word = " " + NEW_TOKEN,
         sep = " *",
     )
+    group.add_argument(
+        "--enum_examples", action="store_true",
+    )
     argparser.add_argument(
         "--clean_up_tokenization_spaces", action="store_true",
         help="Clean up tokenization spaces. Only useful and better for non-word-based tokenizer."
@@ -547,6 +562,8 @@ if __name__ == "__main__":
         )
 
     in_context_format = set_and_get_format(tokenizer, args)
+    if args.enum_examples:
+        in_context_format.sep_formatter = "\n    example #{}: ".format
 
     if args.mode == "stat":
         dataset_stats(

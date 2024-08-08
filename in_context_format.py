@@ -1,4 +1,4 @@
-from typing import Optional, Iterable
+from typing import Optional, Iterable, Callable
 from utils import example_str
 from text_configs import NEW_TOKEN
 
@@ -56,7 +56,8 @@ class InContextFormat:
     def __init__(
             self,
             t: Optional[str],
-            sep: str,
+            sep: Optional[str] = None,
+            sep_formatter: Optional[Callable] = None,
             start_with_sep: bool = True,
             prompt: str = "",
     ):
@@ -75,6 +76,7 @@ class InContextFormat:
         """
         self.t = t
         self.sep = sep
+        self.sep_formatter = sep_formatter
         self.start_with_sep = start_with_sep
         self.prompt = prompt
 
@@ -82,20 +84,41 @@ class InContextFormat:
             self,
             strs: Iterable[str],
             start_with_sep: Optional[bool] = None,
+            end_with_sep: bool = True,
+            start_index: int = 0,
     ) -> str:
         if start_with_sep is None:
             start_with_sep = self.start_with_sep
-        return ((self.sep if start_with_sep else '') +
-                ''.join(s + self.sep for s in strs))
+        if self.sep_formatter is not None:
+            text = ''
+            index = start_index
+            for s in strs:
+                if index != start_index or start_with_sep:
+                    text += self.sep_formatter(index)
+                text += s
+                index += 1
+            if end_with_sep:
+                text += self.sep_formatter(index)
+        elif self.sep is not None:
+            text = (
+                (self.sep if start_with_sep else '') +
+                self.sep.join(strs) +
+                (self.sep if end_with_sep else '')
+            )
+        return text
 
     def concat_examples(
             self,
             examples,
             start_with_sep: Optional[bool] = None,
+            end_with_sep: bool = True,
+            start_index: int = 0,
     ) -> str:
         return self.concat_strs(
             (example_str(example, t=self.t) for example in examples),
             start_with_sep=start_with_sep,
+            end_with_sep=end_with_sep,
+            start_index=start_index,
         )
 
     def __call__(self, examples, next_examples=None, start_with_sep=None):
