@@ -389,6 +389,47 @@ def tokenized_text(tokenizer, text, skip_special_tokens=False, **kwargs):  # TOD
     )
 
 
+def print_data(
+        data: datasets.Dataset,
+        n_examples: int,
+        max_sample_times: int,
+        in_context_format: InContextFormat,
+        tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
+        clean_up_tokenization_spaces: bool = False,
+        seed: Optional[int] = None,
+        pause: bool = False,
+):
+    np.random.seed(seed)
+    rng = np.random.default_rng(seed=seed)
+
+    n_episodes = 0
+    try:
+        data = data.shuffle(generator=rng)
+        for item in sample_examples(data, n_examples, max_sample_times=max_sample_times, rng=rng):
+            n_episodes += 1
+            print(f"Episode #{n_episodes}:")
+            word, examples = item["word"], item["examples"]  # type: ignore
+            text = in_context_format.concat_examples(
+                examples,
+                start_with_sep=True,
+                end_with_sep=False,
+                start_index=1,
+            )
+            if tokenizer is not None:
+                text = tokenized_text(
+                    tokenizer,
+                    text,
+                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                )
+            print(f"{word}:" + text)
+
+            if pause:
+                input()
+
+    except EOFError:
+        print()
+
+
 def interactive_classification(
         data: datasets.Dataset,
         n_class: int,
@@ -471,7 +512,7 @@ def interactive_classification(
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        "mode", choices=["stat", "class"],
+        "mode", choices=["stat", "print", "class"],
     )
     argparser.add_argument(
         "--data_dir", type=Path,
@@ -508,7 +549,7 @@ if __name__ == "__main__":
         help="Number of words to classify, i.e., n-way classification."
     )
     argparser.add_argument(
-        "--n_study_examples", type=int, default=2,
+        "--n_examples", type=int, default=5,
         help="Number of study examples for each new word."
     )
     argparser.add_argument(
@@ -531,6 +572,9 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--seed", type=int,
         help="Random seed."
+    )
+    argparser.add_argument(
+        "--pause", action="store_true",
     )
     args = argparser.parse_args()
     if args.mode == "stat" and args.tokenizer is None:
@@ -576,11 +620,23 @@ if __name__ == "__main__":
             n_uses_range = args.n_uses_range,
         )
 
+    if args.mode == "print":
+        print_data(
+            meta_dataset[args.split],
+            args.n_examples,
+            args.max_sample_times,
+            in_context_format,
+            tokenizer = tokenizer,
+            clean_up_tokenization_spaces = args.clean_up_tokenization_spaces,
+            seed = args.seed,
+            pause = args.pause,
+        )
+
     elif args.mode == "class":
         interactive_classification(
             meta_dataset[args.split],
             args.n_class,
-            args.n_study_examples,
+            args.n_examples-1,
             args.max_sample_times,
             in_context_format,
             tokenizer = tokenizer,
