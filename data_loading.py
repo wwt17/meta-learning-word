@@ -397,6 +397,7 @@ def print_data(
         tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
         clean_up_tokenization_spaces: bool = False,
         seed: Optional[int] = None,
+        shuffle: bool = False,
         pause: bool = False,
 ):
     np.random.seed(seed)
@@ -404,7 +405,8 @@ def print_data(
 
     n_episodes = 0
     try:
-        data = data.shuffle(generator=rng)
+        if shuffle:
+            data = data.shuffle(generator=rng)
         for item in sample_examples(data, n_examples, max_sample_times=max_sample_times, rng=rng):
             n_episodes += 1
             print(f"Episode #{n_episodes}:")
@@ -439,6 +441,7 @@ def interactive_classification(
         tokenizer: Optional[Union[PreTrainedTokenizer, PreTrainedTokenizerFast]] = None,
         clean_up_tokenization_spaces: bool = False,
         seed: Optional[int] = None,
+        shuffle: bool = False,
 ):
     np.random.seed(seed)
     rng = np.random.default_rng(seed=seed)
@@ -446,7 +449,8 @@ def interactive_classification(
     n_episodes = 0
     while True:
         try:
-            data = data.shuffle(generator=rng)
+            if shuffle:
+                data = data.shuffle(generator=rng)
             for word_examples_batch in batchify(sample_examples(data, n_study_examples+1, max_sample_times=max_sample_times, rng=rng), batch_size=n_class):
                 n_episodes += 1
                 print(f"Episode #{n_episodes}:")
@@ -574,6 +578,9 @@ if __name__ == "__main__":
         help="Random seed."
     )
     argparser.add_argument(
+        "--shuffle", action="store_true",
+    )
+    argparser.add_argument(
         "--pause", action="store_true",
     )
     args = argparser.parse_args()
@@ -629,6 +636,7 @@ if __name__ == "__main__":
             tokenizer = tokenizer,
             clean_up_tokenization_spaces = args.clean_up_tokenization_spaces,
             seed = args.seed,
+            shuffle = args.shuffle,
             pause = args.pause,
         )
 
@@ -642,6 +650,7 @@ if __name__ == "__main__":
             tokenizer = tokenizer,
             clean_up_tokenization_spaces = args.clean_up_tokenization_spaces,
             seed = args.seed,
+            shuffle = args.shuffle,
         )
 
     else:
