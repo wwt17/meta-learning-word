@@ -58,15 +58,21 @@ grids = [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"][:1],
-            "pretrained_model": [f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']], #["gpt2", os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"],
-            "revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
-            "n_examples": list(range(10, 11)),
+            "pretrained_model": [
+                #f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']
+                #"gpt2",
+                os.environ["SCRATCH"]+r"/Meta-Llama-3-8B",
+            ],
+            #"revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
+            "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
             "new_word": [" dax"],
-            "prompt": ["The following lines are lowercased example sentences using a new word 'dax' in random order, one per line:"],
+            "prompt": [
+                "",
+                "The following lines are lowercased example sentences using a new word 'dax' in random order, one per line:",
+            ][0:1],
             "sep": [" *"],
-            "prepend": [" "],
         }
     ],
     [
@@ -96,20 +102,24 @@ grids = [
     [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word"],
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word"],
             "pretrained_model": [
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_lm_False_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_3e-05_weight_decay_0.0_seed_0_eval_step_500/best",
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_prompt_n_examples_10_max_sample_times_0_batch_size_8_lr_1e-05_weight_decay_0.0_seed_0/best",
-            ][1:2],
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0003_seed_0_eval_step_1000/best",
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0001_seed_0_eval_step_1000/best",
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_prompt_n_examples_10_max_sample_times_0_batch_size_8_lr_0.001_seed_0/best",
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_prompt_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0003_seed_0_eval_step_1000/best",
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_80_batch_size_32_lr_0.003_seed_0_eval_step_1000/best",
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best",
+            ][-2:],
             "tokenizer": [os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"],
-            "n_examples": list(range(10, 11)),
+            "n_examples": list(range(5, 6)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
             "new_word": ["<|reserved_special_token_0|>"],
             "prompt": [
                 "",
                 "<|reserved_special_token_2|><|reserved_special_token_3|><|reserved_special_token_4|><|reserved_special_token_5|><|reserved_special_token_6|>",
-            ][1:2],
+            ][0:1],
             "sep": ["<|reserved_special_token_1|>"],
         }
     ],
@@ -119,5 +129,6 @@ flags = [
     "data_dir",
     #"pretrained_model",
     #"revision",
+    #"prompt",
     "n_examples",
 ]
