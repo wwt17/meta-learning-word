@@ -178,7 +178,7 @@ def evaluate(
         data,
         args.n_examples,
         max_sample_times = args.max_sample_times,
-        rng = np.random.default_rng(args.seed) if args.seed is None or args.seed >= 0 else None,
+        rng = None if args.data_order == "original" else np.random.default_rng(args.seed),
     )
     print(f'{prefix}n_episodes: {len(dataset)}')
     cls_dataset = dataset.map(in_context_format.construct_meta_cls_example)
@@ -301,7 +301,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--seed", type=int, default=0,
         help="Random seed."
-             " If negative, episodes will consist of first examples of a word"
+    )
+    argparser.add_argument(
+        "--data_order", choices=["original"],
+        help="original: episodes will consist of first examples of a word"
              " in their original order."
     )
     argparser.add_argument(
