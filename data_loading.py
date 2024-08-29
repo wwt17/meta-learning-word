@@ -1,4 +1,4 @@
-from typing import Union, Optional, Any
+from typing import Union, Optional, Any, Generator
 from collections.abc import Iterable, Sequence, Mapping, Sized
 import os
 import sys
@@ -155,7 +155,11 @@ def sample_lm_seq(
     )
 
 
-def load_meta_dataset(data_path, clean_up_tokenization_spaces=False, prepend=""):
+def load_meta_dataset(
+        data_path,
+        clean_up_tokenization_spaces: bool = False,
+        prepend: str = "",
+) -> datasets.Dataset:
     with open(data_path, "r") as f:
         data = json.load(f)
     if clean_up_tokenization_spaces:
@@ -171,6 +175,27 @@ def load_meta_dataset(data_path, clean_up_tokenization_spaces=False, prepend="")
     data = [{"word": word, "examples": examples} for word, examples in data.items()]
     data = datasets.Dataset.from_list(data)
     return data
+
+
+def load_meta_datasets(
+        data_paths: Iterable,
+        splits: list[str],
+        kwargs: Mapping,
+) -> Generator[tuple[str, datasets.Dataset], None, None]:
+    for path in data_paths:
+        assert path.exists(), f"Data does not exist: {path}"
+        if path.is_file():
+            yield path.stem, load_meta_dataset(path, **kwargs)
+        elif path.is_dir():
+            dataset_dict, _ = load_dataset(
+                path,
+                lm=False,
+                splits=splits,
+                meta_dataset_kwargs=kwargs,
+            )
+            yield from dataset_dict.items()
+        else:
+            assert False, f"Cannot handle data: {path}"
 
 
 def load_dataset(
@@ -521,7 +546,7 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--data_dir", type=Path,
         default=Path("word_use_data", "childes", "word"),
-        help="Path to the dataset."
+        help="Path to the dataset directory."
     )
     argparser.add_argument(
         "--split",
