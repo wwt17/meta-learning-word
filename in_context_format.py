@@ -57,7 +57,7 @@ class InContextFormat:
             self,
             t: Optional[str],
             sep: Optional[str] = None,
-            sep_formatter: Optional[Callable] = None,
+            sep_formatter: Optional[Callable[[int], str]] = None,
             start_with_sep: bool = True,
             prompt: str = "",
     ):
@@ -90,21 +90,20 @@ class InContextFormat:
         if start_with_sep is None:
             start_with_sep = self.start_with_sep
         if self.sep_formatter is not None:
-            text = ''
-            index = start_index
-            for s in strs:
-                if index != start_index or start_with_sep:
-                    text += self.sep_formatter(index)
-                text += s
-                index += 1
-            if end_with_sep:
-                text += self.sep_formatter(index)
+            sep_formatter: Callable[[int], str] = self.sep_formatter
         elif self.sep is not None:
-            text = (
-                (self.sep if start_with_sep else '') +
-                self.sep.join(strs) +
-                (self.sep if end_with_sep else '')
-            )
+            sep_formatter: Callable[[int], str] = lambda index: self.sep  # type: ignore
+        else:
+            assert False, "Must have either sep_formatter or sep"
+        text = ''
+        index = start_index
+        for s in strs:
+            if index != start_index or start_with_sep:
+                text += sep_formatter(index)
+            text += s
+            index += 1
+        if end_with_sep and (index != start_index or start_with_sep):
+            text += sep_formatter(index)
         return text
 
     def concat_examples(
