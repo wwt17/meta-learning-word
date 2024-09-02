@@ -33,6 +33,13 @@ def zipdict(d: Mapping):
         yield {key: value for key, value in zip(d.keys(), value_tuple)}
 
 
+def merge_input_output_dict(fn):
+    def wrapper(input_dict):
+        output_dict = fn(input_dict)
+        return {**input_dict, **output_dict}
+    return wrapper
+
+
 def batchify(examples, batch_size=2, drop_last=True):
     examples = iter(examples)
     while True:
@@ -238,7 +245,7 @@ def clean_up_tokenization_spaces_for_example(
         return ""
     new_sentence = tokenization_space_pattern.sub(_repl, sentence)
     offset_mapping = np.insert(np.cumsum(char_is_retained), 0, 0)
-    new_offsets = [list(offset_mapping[offset]) for offset in offsets]
+    new_offsets = [list(offset_mapping[np.array(offset)]) for offset in offsets]
     return {"sentence": new_sentence, "offsets": new_offsets}
 
 

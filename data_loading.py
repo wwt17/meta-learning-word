@@ -1,4 +1,4 @@
-from typing import Union, Optional, Any, Generator
+from typing import Union, Optional, Any, Generator, TextIO
 from collections.abc import Iterable, Sequence, Mapping, Sized
 import os
 import sys
@@ -91,6 +91,52 @@ def is_data_tokenizer(tokenizer) -> bool:
     return tokenizer.eos_token == SEP_TOKEN
 
 
+def read_meta_episode(
+        file: Optional[TextIO] = None,
+        clean_up_tokenization_spaces: bool = False,
+        prepend: str = "",
+) -> tuple[str, list[dict]]:
+    word = file.readline().strip() if file is not None else input("word: ")
+    word_pattern = re.compile(re.escape(word))
+    examples = []
+    while True:
+        sentence = file.readline().strip() if file is not None else input(f"sentence #{len(examples)}: ")
+        if not sentence:
+            break
+        offsets = [match.span() for match in word_pattern.finditer(sentence)]
+        if file is None:
+            print(f"{offsets=}")
+        if not offsets:
+            if file is None:
+                print(f"Cannot find occurrence of word {word}.")
+            continue
+        example = {"sentence": sentence, "offsets": offsets}
+        examples.append(example)
+    if clean_up_tokenization_spaces:
+        examples = map(clean_up_tokenization_spaces_for_example, examples)
+    if prepend:
+        examples = map(partial(prepend_to_example, prepend), examples)
+    examples = list(examples)
+    return word, examples
+
+
+def read_meta_episodes(
+        file: Optional[TextIO] = None,
+        clean_up_tokenization_spaces: bool = False,
+        prepend: str = "",
+) -> Generator[dict, None, None]:
+    while True:
+        try:
+            word, examples = read_meta_episode(
+                file = file,
+                clean_up_tokenization_spaces = clean_up_tokenization_spaces,
+                prepend = prepend,
+            )
+            yield {"word": word, "examples": examples}
+        except EOFError:
+            break
+
+
 def sample_examples(
         data: datasets.Dataset,
         n_examples: int,
@@ -178,7 +224,7 @@ def load_meta_dataset(
 
 
 def load_meta_datasets(
-        data_paths: Iterable,
+        data_paths: Iterable[Path],
         splits: list[str],
         kwargs: Mapping,
 ) -> Generator[tuple[str, datasets.Dataset], None, None]:

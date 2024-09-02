@@ -12,10 +12,10 @@ from torch.utils.data import DataLoader
 import datasets
 import transformers
 from transformers import AutoModelForCausalLM, set_seed
-from data_loading import load_meta_datasets, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
+from data_loading import load_meta_datasets, read_meta_episodes, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls
-from utils import frac_repr
+from utils import frac_repr, merge_input_output_dict
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,9 +44,10 @@ def print_top_k_preds(logits, k: int, tokenizer):
         print()
 
 
-def evaluate_generation(
-        cls_dataset: datasets.Dataset,
+def evaluate_gen(
+        dataset: Iterable,
         tokenizer,
+        model: transformers.PreTrainedModel,
         generation_config: transformers.generation.GenerationConfig,
         stopping_criteria = None,
         top_p: float = 1.0,
@@ -63,7 +64,7 @@ def evaluate_generation(
         skip_stop_string: Optional[str] = None,
         interactive: bool = False,
 ):
-    for i, item in enumerate(cls_dataset):
+    for i, item in enumerate(dataset):
         print(f"Example #{i}:")
         print(f"ground-truth word:", item["word"]) # type: ignore
         print(f"ground-truth prefix:", item["prefix"]) # type: ignore
@@ -163,41 +164,35 @@ def evaluate_generation(
             print()
 
 
-def evaluate(
-        data: datasets.Dataset,
-        split_name: Optional[str],
+def evaluate_classification(
+        dataset: datasets.Dataset,
+        prefix: str,
         tokenizer,
-        in_context_format: InContextFormat,
-        model: torch.nn.Module,
+        model: transformers.PreTrainedModel,
         raw_loss_fct: torch.nn.Module,
-        args,
+        eval_n_classes: list[int],
 ):
-    prefix = f'{split_name}_' if split_name is not None else ''
-    print(f'{prefix}n_words: {len(data)}')
-    dataset = sample_examples(
-        data,
-        args.n_examples,
-        max_sample_times = args.max_sample_times,
-        rng = None if args.data_order == "original" else np.random.default_rng(args.seed),
-    )
-    print(f'{prefix}n_episodes: {len(dataset)}')
-    cls_dataset = dataset.map(in_context_format.construct_meta_cls_example)
-    model.eval()
-
     # classification
-    for n_classes in args.eval_n_classes:
-        cls_dataloader = DataLoader(
-            cls_dataset, # type: ignore
+    for n_classes in eval_n_classes:
+        dataloader = DataLoader(
+            dataset, # type: ignore
             batch_size=n_classes,
             shuffle=False,
             drop_last=True,
             collate_fn=partial(cls_collate_fn, tokenizer),
         )
         value_name = f"{prefix}cls_{n_classes}_acc"
-        cls_acc = evaluate_cls(model, cls_dataloader, raw_loss_fct)
+        cls_acc = evaluate_cls(model, dataloader, raw_loss_fct)
         print(f"{value_name}={frac_repr(*cls_acc, prec=3)}")
 
-    # generation
+
+def evaluate_generation(
+        dataset: Iterable,
+        tokenizer,
+        in_context_format: InContextFormat,
+        model: transformers.PreTrainedModel,
+        args,
+):
     stop_string: str = in_context_format.sep  # type: ignore
     eos_token_id: int = tokenizer(stop_string)['input_ids'][-1]
     generation_config = transformers.generation.GenerationConfig(
@@ -209,9 +204,10 @@ def evaluate(
         output_scores=True,
     )
     try:
-        evaluate_generation(
-            cls_dataset,
+        evaluate_gen(
+            dataset,
             tokenizer,
+            model,
             generation_config,
             #stopping_criteria = transformers.StoppingCriteriaList([StopSubStringCriteria(tokenizer, stop_string, len(prefix_input.input_ids[0]))]),
             top_p=args.top_p,
@@ -231,12 +227,47 @@ def evaluate(
         pass
 
 
+def load_meta_data_sources(
+        data_sources: Iterable,
+        splits: list[str],
+        kwargs: Mapping,
+        args,
+):
+    for data_source in data_sources:
+        if data_source == "input":
+            yield "", read_meta_episodes(file=None, **kwargs)
+            continue
+        data_path = Path(data_source)
+        if data_path.is_file() and data_path.suffix != ".json":
+            with data_path.open() as file:
+                dataset = datasets.Dataset.from_generator(
+                    read_meta_episodes(file=file, **kwargs)  # type: ignore
+                )
+            yield data_path.stem+"_", dataset
+            continue
+        for split_name, data in load_meta_datasets(
+                [data_path], splits=splits, kwargs=kwargs):
+            if split_name == "validation":
+                split_name = "val"
+            prefix = f'{split_name}_' if split_name is not None else ''
+            print(f'{prefix}n_words: {len(data)}')
+            dataset = sample_examples(
+                data,
+                args.n_examples,
+                max_sample_times = args.max_sample_times,
+                rng = None if args.data_order == "original" else np.random.default_rng(args.seed),
+            )
+            print(f'{prefix}n_episodes: {len(dataset)}')
+            yield prefix, dataset
+
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        "--data_dir", type=Path, nargs="+",
-        help="Path(s) to the dataset directory or file.",
-        required=True,
+        "--data_dir", nargs="+", default=["input"],
+        help='Sources of data. '
+             'Each can be a path to the dataset directory or file, '
+             'or "input".',
     )
     argparser.add_argument(
         "--split", nargs="+", choices=["train", "val", "test"],
@@ -257,6 +288,12 @@ if __name__ == "__main__":
     add_format_arguments(group)
     argparser.add_argument(
         "--n_examples", type=int, default=4,
+    )
+    argparser.add_argument(
+        "--cls_last_n", type=int, default=1,
+    )
+    argparser.add_argument(
+        "--gen_last_n", type=int, default=1,
     )
     argparser.add_argument(
         "--max_sample_times", type=int, default=1,
@@ -330,6 +367,7 @@ if __name__ == "__main__":
     if n_added_tokens:
         print("Warning: may use untrained token embeddings")
         model.resize_token_embeddings(len(tokenizer))
+    model.eval()
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id) # type: ignore
 
     meta_dataset_kwargs = dict(
@@ -340,15 +378,43 @@ if __name__ == "__main__":
         "validation" if split == "val" else split
         for split in args.split
     ]
-    for split_name, data in load_meta_datasets(args.data_dir, mapped_splits, meta_dataset_kwargs):
-        if split_name == "validation":
-            split_name = "val"
-        evaluate(
-            data,
-            split_name,
+    for prefix, dataset in load_meta_data_sources(
+            args.data_dir, mapped_splits, meta_dataset_kwargs, args):
+        # classification
+        if args.eval_n_classes:
+            assert isinstance(dataset, datasets.Dataset), "Cannot evaluate classification on stream input"
+            cls_dataset = dataset.map(
+                partial(
+                    in_context_format.construct_meta_cls_example,
+                    last_n=args.cls_last_n
+                )
+            )
+            evaluate_classification(
+                cls_dataset,
+                prefix,
+                tokenizer,
+                model,
+                raw_loss_fct,
+                args.eval_n_classes,
+            )
+        else:
+            cls_dataset = None
+        # generation
+        if cls_dataset is not None and args.gen_last_n == args.cls_last_n:
+            gen_dataset = cls_dataset
+        else:
+            fn = partial(
+                in_context_format.construct_meta_cls_example,
+                last_n=args.gen_last_n
+            )
+            if isinstance(dataset, datasets.Dataset):
+                gen_dataset = dataset.map(fn)
+            else:
+                gen_dataset = map(merge_input_output_dict(fn), dataset)
+        evaluate_generation(
+            gen_dataset,
             tokenizer,
             in_context_format,
             model,
-            raw_loss_fct,
             args,
         )
