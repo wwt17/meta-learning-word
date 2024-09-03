@@ -137,5 +137,10 @@ class InContextFormat:
 
     def construct_meta_cls_example(self, item, last_n=1):
         examples = item["examples"]
-        prefix, suffix = self(examples[:-last_n], examples[-last_n:])
+        prefix_examples, suffix_examples = (
+            (examples, [])
+            if last_n == 0 else
+            (examples[:-last_n], examples[-last_n:])
+        )
+        prefix, suffix = self(prefix_examples, suffix_examples)
         return {"prefix": prefix, "suffix": suffix}
