@@ -299,6 +299,9 @@ if __name__ == "__main__":
         "--max_sample_times", type=int, default=1,
     )
     argparser.add_argument(
+        "--append_to_prefix", default="",
+    )
+    argparser.add_argument(
         "--eval_n_classes", type=int, nargs="*", default=[],
         help="Number of classes for evaluation classification task."
     )
@@ -386,7 +389,8 @@ if __name__ == "__main__":
             cls_dataset = dataset.map(
                 partial(
                     in_context_format.construct_meta_cls_example,
-                    last_n=args.cls_last_n
+                    last_n=args.cls_last_n,
+                    append_to_prefix=args.append_to_prefix,
                 )
             )
             evaluate_classification(
@@ -405,7 +409,8 @@ if __name__ == "__main__":
         else:
             fn = partial(
                 in_context_format.construct_meta_cls_example,
-                last_n=args.gen_last_n
+                last_n=args.gen_last_n,
+                append_to_prefix=args.append_to_prefix,
             )
             if isinstance(dataset, datasets.Dataset):
                 gen_dataset = dataset.map(fn)

@@ -135,7 +135,7 @@ class InContextFormat:
         examples = item["examples"]
         return {"examples": self(examples, start_with_sep=start_with_sep)}
 
-    def construct_meta_cls_example(self, item, last_n=1):
+    def construct_meta_cls_example(self, item, last_n=1, append_to_prefix=""):
         examples = item["examples"]
         prefix_examples, suffix_examples = (
             (examples, [])
@@ -143,4 +143,5 @@ class InContextFormat:
             (examples[:-last_n], examples[-last_n:])
         )
         prefix, suffix = self(prefix_examples, suffix_examples)
+        prefix += append_to_prefix
         return {"prefix": prefix, "suffix": suffix}
