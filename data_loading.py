@@ -93,10 +93,19 @@ def is_data_tokenizer(tokenizer) -> bool:
 
 def read_meta_episode(
         file: Optional[TextIO] = None,
+        word_must_occur_in_sentence: bool = False,
         clean_up_tokenization_spaces: bool = False,
         prepend: str = "",
 ) -> tuple[str, list[dict]]:
-    word = file.readline().strip() if file is not None else input("word: ")
+    if file is not None:
+        word = ''
+        while not word:
+            line = file.readline()
+            if not line:
+                raise EOFError
+            word = line.strip()
+    else:
+        word = input("word: ")
     word_pattern = re.compile(re.escape(word))
     examples = []
     while True:
@@ -106,7 +115,7 @@ def read_meta_episode(
         offsets = [match.span() for match in word_pattern.finditer(sentence)]
         if file is None:
             print(f"{offsets=}")
-        if not offsets:
+        if word_must_occur_in_sentence and not offsets:
             if file is None:
                 print(f"Cannot find occurrence of word {word}.")
             continue

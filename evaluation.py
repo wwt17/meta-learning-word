@@ -240,8 +240,11 @@ def load_meta_data_sources(
         data_path = Path(data_source)
         if data_path.is_file() and data_path.suffix != ".json":
             with data_path.open() as file:
+                # Note: from_generator will always cache the dataset
+                # clean up the cache files if updated
                 dataset = datasets.Dataset.from_generator(
-                    read_meta_episodes(file=file, **kwargs)  # type: ignore
+                    read_meta_episodes,
+                    gen_kwargs={"file": file, **kwargs},
                 )
             yield data_path.stem+"_", dataset
             continue
