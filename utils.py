@@ -55,7 +55,7 @@ def map_structure(func, *structure):
     elif isinstance(structure[0], Sequence):
         return type(structure[0])(map_structure(func, *substructure) for substructure in zip(*structure))
     elif isinstance(structure[0], Mapping):
-        return {key: map_structure(func, *(struct[key] for struct in structure)) for key in structure[0].keys()}
+        return type(structure[0])({key: map_structure(func, *(struct[key] for struct in structure)) for key in structure[0].keys()})
     else:
         raise ValueError(f"Unknown structure {structure}")
 

@@ -91,6 +91,47 @@ def is_data_tokenizer(tokenizer) -> bool:
     return tokenizer.eos_token == SEP_TOKEN
 
 
+def read_examples(
+        word_pattern: re.Pattern,
+        file: Optional[TextIO] = None,
+        word_must_occur_in_sentence: bool = False,
+) -> Generator[dict, None, None]:
+    n_examples = 0
+    while True:
+        sentence = file.readline().strip() if file is not None else input(f"sentence #{n_examples}: ")
+        if not sentence:
+            break
+        offsets = [match.span() for match in word_pattern.finditer(sentence)]
+        if file is None:
+            print(f"{offsets=}")
+        if word_must_occur_in_sentence and not offsets:
+            if file is None:
+                print(f"Cannot find occurrence of word pattern '{word_pattern.pattern}'.")
+            continue
+        example = {"sentence": sentence, "offsets": offsets}
+        yield example
+        n_examples += 1
+
+
+def read_and_preprocess_examples(
+        word_pattern: re.Pattern,
+        file: Optional[TextIO] = None,
+        word_must_occur_in_sentence: bool = False,
+        clean_up_tokenization_spaces: bool = False,
+        prepend: str = "",
+) -> Generator[dict, None, None]:
+    examples = read_examples(
+        word_pattern,
+        file=file,
+        word_must_occur_in_sentence=word_must_occur_in_sentence,
+    )
+    if clean_up_tokenization_spaces:
+        examples = map(clean_up_tokenization_spaces_for_example, examples)
+    if prepend:
+        examples = map(partial(prepend_to_example, prepend), examples)
+    yield from examples
+
+
 def read_meta_episode(
         file: Optional[TextIO] = None,
         word_must_occur_in_sentence: bool = False,
@@ -107,24 +148,13 @@ def read_meta_episode(
     else:
         word = input("word: ")
     word_pattern = re.compile(re.escape(word))
-    examples = []
-    while True:
-        sentence = file.readline().strip() if file is not None else input(f"sentence #{len(examples)}: ")
-        if not sentence:
-            break
-        offsets = [match.span() for match in word_pattern.finditer(sentence)]
-        if file is None:
-            print(f"{offsets=}")
-        if word_must_occur_in_sentence and not offsets:
-            if file is None:
-                print(f"Cannot find occurrence of word {word}.")
-            continue
-        example = {"sentence": sentence, "offsets": offsets}
-        examples.append(example)
-    if clean_up_tokenization_spaces:
-        examples = map(clean_up_tokenization_spaces_for_example, examples)
-    if prepend:
-        examples = map(partial(prepend_to_example, prepend), examples)
+    examples = read_and_preprocess_examples(
+        word_pattern,
+        file=file,
+        word_must_occur_in_sentence=word_must_occur_in_sentence,
+        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+        prepend=prepend,
+    )
     examples = list(examples)
     return word, examples
 

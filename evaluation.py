@@ -1,9 +1,10 @@
 from typing import Any, Iterable, TypeVar, Optional, Union
-from collections.abc import Sequence, Mapping, Sized
+from collections.abc import Sequence, Mapping, Sized, Callable
 from collections import Counter, defaultdict
 import argparse
 from pathlib import Path
-from itertools import islice, chain
+import re
+from itertools import islice, chain, combinations
 from functools import partial
 import numpy as np
 import torch
@@ -12,9 +13,9 @@ from torch.utils.data import DataLoader
 import datasets
 import transformers
 from transformers import AutoModelForCausalLM, set_seed
-from data_loading import load_meta_datasets, read_meta_episodes, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
+from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
 from in_context_format import InContextFormat, add_format_arguments
-from evaluation_cls import cls_collate_fn, evaluate_cls
+from evaluation_cls import cls_collate_fn, evaluate_cls, evaluate_cls_with_fixed_words
 from utils import frac_repr, merge_input_output_dict
 
 
@@ -227,6 +228,66 @@ def evaluate_generation(
         pass
 
 
+def evaluate_syntactic_category_classification(
+        tokenizer,
+        in_context_format: InContextFormat,
+        model: transformers.PreTrainedModel,
+        raw_loss_fct: Callable,
+        data_kwargs: Mapping,
+        data_dir: Path = Path("category-abstraction", "data"),
+        file_prefix: str = "mnli",
+        longer: bool = False,
+        split: str = "test",
+        word: str = "[MASK]",
+        batch_size: int = 8,
+        drop_last: bool = False,
+):
+    """Evaluate model on Kim and Smolensky (2021)'s dataset.
+    """
+    syn_ctgs = ["n", "v", "adj", "adv"]
+    ctgs = ["ctg0", "ctg1"]
+    data_kinds = {
+        'diff': '_different_{ctg}_{split}.txt'.format,
+        'ident': '_identical_{ctg}_{split}.txt'.format,
+    }
+    if longer:
+        data_kinds['diff_longer'] = '_different_{ctg}_{split}_longer.txt'.format
+    word_pattern = re.compile(re.escape(word))
+
+    results = {}
+    for syn_ctg_pair in combinations(syn_ctgs, 2):
+        sorted_syn_ctg_pair = tuple(sorted(syn_ctg_pair))
+        data_dir_ = data_dir / ("".join(sorted_syn_ctg_pair)+"_f")
+
+        with (data_dir_ / (file_prefix + "_finetune.txt")).open() as f:
+            examples = read_and_preprocess_examples(word_pattern, file=f, **data_kwargs)
+            word_items = [{"word": word, "examples": [example]} for example in examples]
+
+        for data_kind, file_suffix_fn in data_kinds.items():
+            for label, ctg in enumerate(ctgs):
+                name = f"{split}_{'_'.join(syn_ctg_pair)}_{ctg}_{data_kind}"
+                with (data_dir_ / (file_prefix + file_suffix_fn(ctg=ctg, split=split))).open() as f:
+                    examples = map(
+                        lambda example: [example],
+                        read_and_preprocess_examples(word_pattern, file=f, **data_kwargs)
+                    )
+                    acc = evaluate_cls_with_fixed_words(
+                        word_items,
+                        examples,
+                        tokenizer,
+                        in_context_format,
+                        model,
+                        raw_loss_fct,
+                        label,
+                        batch_size,
+                        drop_last=drop_last,
+                    )
+                print(f"{name}_acc={frac_repr(*acc, prec=1)}")
+                results[name] = acc
+
+    return results
+
+
 def load_meta_data_sources(
         data_sources: Iterable,
         splits: list[str],
@@ -234,6 +295,9 @@ def load_meta_data_sources(
         args,
 ):
     for data_source in data_sources:
+        if data_source == "syntactic":
+            yield "syntactic_", None
+            continue
         if data_source == "input":
             yield "", read_meta_episodes(file=None, **kwargs)
             continue
@@ -270,10 +334,12 @@ if __name__ == "__main__":
         "--data_dir", nargs="+", default=["input"],
         help='Sources of data. '
              'Each can be a path to the dataset directory or file, '
-             'or "input".',
+             'or "input" (terminal input), '
+             'or "syntactic" (Najoung & Smolensky, 2021; '
+             'path default to category-abstraction/data).',
     )
     argparser.add_argument(
-        "--split", nargs="+", choices=["train", "val", "test"],
+        "--split", nargs="+", choices=["train", "val", "dev", "test"],
         default=["val"],
         help="Which split(s) to use."
     )
@@ -307,6 +373,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--eval_n_classes", type=int, nargs="*", default=[],
         help="Number of classes for evaluation classification task."
+    )
+    argparser.add_argument(
+        "--batch_size", type=int, default=8,
+        help="Batch size for syntactic category classification."
     )
     argparser.add_argument(
         "--max_new_tokens", type=int, default=30,
@@ -386,6 +456,20 @@ if __name__ == "__main__":
     ]
     for prefix, dataset in load_meta_data_sources(
             args.data_dir, mapped_splits, meta_dataset_kwargs, args):
+        # syntactic category classification
+        if dataset is None:
+            assert prefix == "syntactic_"
+            for split in args.split:
+                evaluate_syntactic_category_classification(
+                    tokenizer,
+                    in_context_format,
+                    model,
+                    raw_loss_fct,
+                    meta_dataset_kwargs,
+                    split=split,
+                    batch_size=args.batch_size,
+                )
+            continue
         # classification
         if args.eval_n_classes:
             assert isinstance(dataset, datasets.Dataset), "Cannot evaluate classification on stream input"
