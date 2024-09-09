@@ -1,7 +1,7 @@
 import os
 
-grids = [
-    [
+grids = {
+    "meta-trained_on_childes_with_gpt2_arch": [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word"],
@@ -15,67 +15,46 @@ grids = [
         for n_examples in range(4, 11)
         for weight_decay in [0.05, 0.07, 0.1, 0.15, 0.12][-1:]
     ],
-    [
-        {
-            "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word"],
-            "pretrained_model": [
-                f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best",
-            ],
-            "n_examples": [n_examples],
-            "eval_n_classes": [tuple(range(2, 11))],
-            "print_decoded_prefix": [True],
-        }
-        for n_examples in range(4, 11)
-    ],
-    [
-        {
-            "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word"],
-            "pretrained_model": [
-                f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best",
-            ],
-            "n_examples": [n_examples],
-            "eval_n_classes": [tuple(range(2, 11))],
-            "print_decoded_prefix": [True],
-        }
-        for n_examples in range(4, 11)
-    ],
-    [
+    "meta_trained_with_pythia_arch": [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"],
             "pretrained_model": [
+                f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best",
+                f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best",
                 f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_100M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.07_seed_0/best",
             ],
             "n_examples": [n_examples],
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
         }
-        for n_examples in range(10, 11)
+        for n_examples in range(4, 11)
     ],
-    [
+    "pretrained_LM": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"][:1],
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word", r"chimeras.json"][:2],
+            #"data_order": ["original"],
             "pretrained_model": [
-                #f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']
-                #"gpt2",
+                *(f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']),
+                "gpt2",
                 os.environ["SCRATCH"]+r"/Meta-Llama-3-8B",
-            ],
+                os.environ["SCRATCH"]+r"/Meta-Llama-3-8B-Instruct",
+            ][-1:],
             #"revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
             "n_examples": list(range(2, 11)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
-            "new_word": [" dax"],
+            "new_word": [" dax", " wug"][0:1],
             "prompt": [
                 "",
                 "The following lines are lowercased example sentences using a new word 'dax' in random order, one per line:",
-            ][0:1],
+                "The following lines are example sentences using a new word 'wug' in random order, one per line:",
+            ][1:2],
             "sep": [" *"],
         }
     ],
-    [
+    "pythia_finetuned": [
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word"],
@@ -99,10 +78,11 @@ grids = [
             ][0:1],
         }
     ],
-    [
+    "Llama_finetuned": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word"],
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"chimeras.json"][-1:],
+            "data_order": ["original"],
             "pretrained_model": [
                 f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0003_seed_0_eval_step_1000/best",
                 f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0001_seed_0_eval_step_1000/best",
@@ -123,11 +103,12 @@ grids = [
             "sep": ["<|reserved_special_token_1|>"],
         }
     ],
-][-1]
+}["pretrained_LM"]
 # ordered flags to display in job name
 flags = [
     "data_dir",
-    #"pretrained_model",
+    #"data_order",
+    "pretrained_model",
     #"revision",
     #"prompt",
     "n_examples",
