@@ -1,5 +1,10 @@
 import os
 
+try:
+    llama_path = os.environ["SCRATCH"]
+except KeyError:
+    llama_path = ""
+
 grids = {
     "meta-trained_on_childes_with_gpt2_arch": [
         {
@@ -19,6 +24,7 @@ grids = {
         {
             "main_file": ["evaluation.py"],
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"],
+            "split": ["test"],
             "pretrained_model": [
                 f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best",
                 f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best",
@@ -38,8 +44,8 @@ grids = {
             "pretrained_model": [
                 *(f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']),
                 "gpt2",
-                os.environ["SCRATCH"]+r"/Meta-Llama-3-8B",
-                os.environ["SCRATCH"]+r"/Meta-Llama-3-8B-Instruct",
+                llama_path+r"/Meta-Llama-3-8B",
+                llama_path+r"/Meta-Llama-3-8B-Instruct",
             ][-1:],
             #"revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
             "n_examples": list(range(2, 11)),
@@ -91,7 +97,7 @@ grids = {
                 f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_80_batch_size_32_lr_0.003_seed_0_eval_step_1000/best",
                 f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best",
             ][-2:],
-            "tokenizer": [os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"],
+            "tokenizer": [llama_path+r"/Meta-Llama-3-8B"],
             "n_examples": list(range(5, 6)),
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
@@ -103,12 +109,13 @@ grids = {
             "sep": ["<|reserved_special_token_1|>"],
         }
     ],
-}["pretrained_LM"]
+}["meta_trained_with_pythia_arch"]
 # ordered flags to display in job name
 flags = [
     "data_dir",
+    "split",
     #"data_order",
-    "pretrained_model",
+    #"pretrained_model",
     #"revision",
     #"prompt",
     "n_examples",

@@ -73,7 +73,7 @@ if args.auto_flag:
     flags = list(varying_keys)
 else:  # use flags
     # check whether there are flags that are varying but omitted in flags
-    omitted_flags = [key for key in varying_keys if key not in flags]
+    omitted_flags = [key for key in varying_keys if key not in flags and key != args.log_dir_flag]
     if omitted_flags:
         print(
             f"ERROR: {', '.join(omitted_flags)} are varying but omitted in flags")
