@@ -737,7 +737,7 @@ if __name__ == "__main__":
             n_uses_range = args.n_uses_range,
         )
 
-    if args.mode == "print":
+    elif args.mode == "print":
         print_data(
             meta_dataset[args.split],
             args.n_examples,
