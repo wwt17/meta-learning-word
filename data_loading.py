@@ -478,6 +478,7 @@ def dataset_stats(
         length_range=None,
         n_uses_range=None,
 ):
+    print(f"vocab size: {len(tokenizer)}")
     print("meta data:")
     for split, data in meta_dataset.items():
         print(f"{split} split:")
