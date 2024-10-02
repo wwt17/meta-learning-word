@@ -1,34 +1,41 @@
 grids = [
     {
         "main_file": ["main.py"],
-        "data_dir": ["word_use_data/childes/word", "word_use_data/babylm_data/babylm_10M/word", "word_use_data/babylm_data/babylm_100M/word", "word_use_data/ptb_text_only/word"][1:2],
-        "config": ["gpt2", "model_config/pythia-70m", "model_config/pythia-160m"][2:3],
+        "config": ["model_config/pythia-160m"],
         "lm": [True],
-        "concat": [False, True][:1],
-        #"context_length": [128],
-        "no_new_token": [False, True][:1],
-        "freq_cutoff": [4, 9][1:2],
+        "concat": [False],
+        "no_new_token": [False],
+        "freq_cutoff": [4],
         "n_epochs": [30],
         "batch_size": [8],
-        "n_examples": list(range(10, 11)),
+        "n_examples": [5, 10],
         "max_sample_times": [0],
-        "eval_n_classes": [tuple(range(2, 7))],
+        "eval_n_classes": [(4, 6, 8)],
         "loss_reduction": ["sum"],
-        "lr": [1e-3, 3e-4, 1e-4, 3e-5, 1e-5][2:3],
-        "weight_decay": [0.15, 0.12, 0.10, 0.07, 0.05][3:4],
+        "lr": [3e-4],
         "factor": [0.1],
         "patience": [2],
-        "seed": [0],
+        "seed": [0, 1, 2],
         "eval_seed": [0],
         "logging_step": [100],
-    },
+        **c,
+    }
+    for c in [
+        {
+            "data_dir": ["word_use_data/childes/word"],
+            "weight_decay": [0.07],
+        },
+        {
+            "data_dir": ["word_use_data/babylm_data/babylm_10M/word"],
+            "weight_decay": [0.15],
+        },
+    ]
 ]
 # ordered flags to display in job name
 flags = [
     "data_dir",
     "config",
     "concat",
-    #"context_length",
     "no_new_token",
     "n_examples",
     "max_sample_times",
