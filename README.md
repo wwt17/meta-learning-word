@@ -60,11 +60,22 @@ This command get the statistics of the dataset in `${DATASET_DIR}`, excluding wo
 python data_loading.py stat --data ${DATASET_DIR} --freq_cutoff 9 --length_range 0 70 --n_uses_range 10 100
 ```
 
-## Training
+## Training models from scratch
 
 Run `main.py`. You can use `runner.py` to create and submit Slurm jobs:
 ```bash
 python runner.py --job_name_base meta-word --config runner_config/config.py --run_name_flag name --submit
+```
+
+You may read and change the config file as you need.
+
+You may need to change the Slurm script header to fit your environment. Default header file is `runner_config/header.slurm`.
+
+## Finetuning pretrained models
+
+Simply change the config to `runner_config/finetune_config.py`:
+```bash
+python runner.py --job_name_base meta-word --config runner_config/finetune_config.py --run_name_flag name --submit
 ```
 
 ## Evaluation
