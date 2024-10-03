@@ -42,6 +42,7 @@ grids = [
             "n_examples": [10],
             "batch_size": [8],
             "lr": [3e-4],
+            "train_max_length": [160],
         },
         {
             "data_dir": ["word_use_data/babylm_data/babylm_10M/word"],
