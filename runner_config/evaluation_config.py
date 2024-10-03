@@ -1,4 +1,5 @@
 import os
+import itertools
 
 try:
     llama_path = os.environ["SCRATCH"]
@@ -23,18 +24,21 @@ grids = {
     "meta_trained_with_pythia_arch": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"],
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word"][:2],
             "split": ["test"],
-            "pretrained_model": [
-                f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_0/best",
-                f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_0/best",
-                f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_100M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.07_seed_0/best",
-            ],
+            "pretrained_model": list(itertools.chain.from_iterable(
+                [
+                    f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_{seed}/best",
+                    f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_{seed}/best",
+                    f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_100M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0001_weight_decay_0.07_seed_{seed}/best",
+                ][:2]
+                for seed in [0, 1, 2]
+            )),
             "n_examples": [n_examples],
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
         }
-        for n_examples in range(4, 11)
+        for n_examples in [5, 10]
     ],
     "pretrained_LM": [
         {
@@ -120,3 +124,18 @@ flags = [
     #"prompt",
     "n_examples",
 ]
+
+syntactic = False
+if syntactic:
+    grids = [
+        {
+            "main_file": grid["main_file"],
+            "data_dir": ["syntactic"],
+            "split": [("dev", "test")],
+            "pretrained_model": grid["pretrained_model"],
+        }
+        for grid in grids
+    ]
+    flags = [
+        "data_dir",
+    ]
