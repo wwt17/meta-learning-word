@@ -171,14 +171,16 @@ def print_statistics(results, id_to_name: Mapping[int, str], judges):
                 winner_ids[judge]
                 for example_results in results
                 for winner_ids in example_results[output_field]
+                if judge in winner_ids
             ]
             winner_ids = np.array(winner_ids)
             cases, counts = np.unique(winner_ids, return_counts=True)
             for case, count in zip(cases, counts):
                 case_name = get_case_name(case, id_to_name)
-                print(f"Case {case_name}: {count}")
+                print(f"Case {case_name}: {frac_repr(count, len(winner_ids))}")
     for judge_pair in combinations(judges, 2):
         cnt_eq, cnt_oppo, tot = 0, 0, 0
+        cnt_table = np.zeros((3, 3), dtype=int)
         for example_results in results:
             for output_field in output_fields:
                 for winner_ids in example_results[output_field]:
@@ -189,7 +191,12 @@ def print_statistics(results, id_to_name: Mapping[int, str], judges):
                     tot += 1
                     cnt_eq += winner_id_pair[0] == winner_id_pair[1]
                     cnt_oppo += winner_id_pair[0] >= 0 and winner_id_pair[1] >= 0 and winner_id_pair[0] != winner_id_pair[1]
+                    cnt_table[winner_id_pair[0], winner_id_pair[1]] += 1
         print(f"{judge_pair[0]} and {judge_pair[1]} agree on {frac_repr(cnt_eq, tot)} judgments and have {frac_repr(cnt_oppo, tot)} opposite judgments")
+        print("table:")
+        for x in [0, 1, -1]:
+            for y in [0, 1, -1]:
+                print(frac_repr(cnt_table[x, y], tot), end=('\n' if y == -1 else ' '))
 
 
 if __name__ == "__main__":
@@ -307,6 +314,8 @@ if __name__ == "__main__":
                         print(f"{judge_name} prediction: " + get_case_name(winner_id, id_to_name) + "!")
                         if args.pause == "judgment":
                             input()
+
+            print(f"ground-truth word: {examples[0]['ground-truth word']}")
 
             if args.save_every_n_examples > 0 and (n_example + 1) % args.save_every_n_examples == 0:
                 with DelayedKeyboardInterrupt(), args.result_file.open("w") as result_file:
