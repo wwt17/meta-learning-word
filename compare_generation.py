@@ -1,4 +1,5 @@
 from collections.abc import Iterable, Mapping
+import signal
 import argparse
 from pathlib import Path
 from itertools import islice, combinations
@@ -14,6 +15,20 @@ if use_outlines:
 else:
     from openai import OpenAI
     client = OpenAI()
+
+
+class DelayedKeyboardInterrupt:
+    def __enter__(self):
+        self.signal_received = False
+        self.old_handler = signal.signal(signal.SIGINT, self.handler)
+                
+    def handler(self, sig, frame):
+        self.signal_received = (sig, frame)
+    
+    def __exit__(self, type, value, traceback):
+        signal.signal(signal.SIGINT, self.old_handler)
+        if self.signal_received:
+            self.old_handler(*self.signal_received)  # type: ignore
 
 
 input_fields = [
@@ -167,7 +182,10 @@ def print_statistics(results, id_to_name: Mapping[int, str], judges):
         for example_results in results:
             for output_field in output_fields:
                 for winner_ids in example_results[output_field]:
-                    winner_id_pair = tuple((winner_ids[judge] for judge in judge_pair))
+                    try:
+                        winner_id_pair = tuple((winner_ids[judge] for judge in judge_pair))
+                    except KeyError:
+                        continue
                     tot += 1
                     cnt_eq += winner_id_pair[0] == winner_id_pair[1]
                     cnt_oppo += winner_id_pair[0] >= 0 and winner_id_pair[1] >= 0 and winner_id_pair[0] != winner_id_pair[1]
@@ -197,8 +215,17 @@ if __name__ == "__main__":
         help="JSON file for saving and restoring comparison results."
     )
     argparser.add_argument(
+        "--example_order", choices=["original", "shuffle"], default="original",
+        help="In which order to present the examples."
+    )
+    argparser.add_argument(
+        "--skip_judged", action="store_true",
+        help="Skip judged generations."
+    )
+    argparser.add_argument(
         "--save_every_n_examples", type=int, default=1,
         help="Save the comparison results every this number of examples."
+             " If set to 0, do not save when iterating over examples."
     )
     argparser.add_argument(
         "--seed", type=int, default=0,
@@ -232,50 +259,64 @@ if __name__ == "__main__":
     raw_id = 1 - ft_id
     id_to_name = {ft_id: "finetuned model", raw_id: "pretrained model"}
 
-    for n_example, examples in enumerate(zip(*map(read_generations, files))):
-        print(f"Example #{n_example}:")
-        for field in ["ground-truth word"]:
-            values = [example[field] for example in examples]
-            assert len(set(values)) == 1, f"{field} differs: {values}"
-        for file_id, (example, word) in enumerate(zip(examples, args.word)):
-            assert word in example["ground-truth prefix"], f"Cannot find word '{word}' in file {file_id}"
-        prefix = examples[raw_id]["ground-truth prefix"]
-        prefix = prefix.removesuffix(" *")
+    ordered_examples = enumerate(zip(*map(read_generations, files)))
+    if args.example_order != "original":
+        ordered_examples = list(ordered_examples)
+    if args.example_order == "shuffle":
+        rng.shuffle(ordered_examples)  # type: ignore
 
-        while len(results) < n_example + 1:
-            results.append({})
-        example_results = results[n_example]
+    try:
+        for n_example, (i_example, examples) in enumerate(ordered_examples):
+            print(f"[{n_example}] Example #{i_example}:")
+            for field in ["ground-truth word"]:
+                values = [example[field] for example in examples]
+                assert len(set(values)) == 1, f"{field} differs: {values}"
+            for file_id, (example, word) in enumerate(zip(examples, args.word)):
+                assert word in example["ground-truth prefix"], f"Cannot find word '{word}' in file {file_id}"
+            prefix = examples[raw_id]["ground-truth prefix"]
+            prefix = prefix.removesuffix(" *")
 
-        for field in output_fields:
-            if field not in example_results:
-                example_results[field] = []
-            field_results = example_results[field]
-            values = [example[field] for example in examples]
-            for n_gen, gens in islice(enumerate(zip(*values)), 1):
-                gens = list(gens)
-                while len(field_results) < n_gen + 1:
-                    field_results.append({})
-                gens[ft_id] = gens[ft_id].replace(args.word[ft_id], args.word[raw_id])
-                winner_ids = field_results[n_gen]
-                for judge_name, judge_obj in judges.items():
-                    winner_ids[judge_name] = compare(
-                        prefix,
-                        gens,
-                        judge=judge_obj,
-                        rng=rng,
-                        word=args.word[raw_id],
-                        unpermuted_answer_id=winner_ids.get(judge_name, None),
-                    )
-                    print(f"{judge_name} prediction: " + get_case_name(winner_ids[judge_name], id_to_name) + "!")
-                    if args.pause == "judgment":
-                        input()
+            while len(results) < i_example + 1:
+                results.append({})
+            example_results = results[i_example]
 
-        if args.save_every_n_examples > 0 and (n_example + 1) % args.save_every_n_examples == 0:
-            with args.result_file.open("w") as result_file:
-                json.dump(results, result_file, indent=2)
+            for field in output_fields:
+                if field not in example_results:
+                    example_results[field] = []
+                field_results = example_results[field]
+                values = [example[field] for example in examples]
+                for n_gen, gens in islice(enumerate(zip(*values)), 1):
+                    gens = list(gens)
+                    while len(field_results) < n_gen + 1:
+                        field_results.append({})
+                    gens[ft_id] = gens[ft_id].replace(args.word[ft_id], args.word[raw_id])
+                    winner_ids = field_results[n_gen]
+                    for judge_name, judge_obj in judges.items():
+                        winner_id = winner_ids.get(judge_name, None)
+                        if args.skip_judged and winner_id is not None:
+                            continue
+                        winner_id = compare(
+                            prefix,
+                            gens,
+                            judge=judge_obj,
+                            rng=rng,
+                            word=args.word[raw_id],
+                            unpermuted_answer_id=winner_id,
+                        )
+                        winner_ids[judge_name] = winner_id
+                        print(f"{judge_name} prediction: " + get_case_name(winner_id, id_to_name) + "!")
+                        if args.pause == "judgment":
+                            input()
 
-        if args.pause == "example":
-            input()
+            if args.save_every_n_examples > 0 and (n_example + 1) % args.save_every_n_examples == 0:
+                with DelayedKeyboardInterrupt(), args.result_file.open("w") as result_file:
+                    json.dump(results, result_file, indent=2)
+
+            if args.pause == "example":
+                input()
+
+    except EOFError:
+        pass
 
     with args.result_file.open("w") as result_file:
         json.dump(results, result_file, indent=2)
