@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence, Callable
 import signal
 import argparse
 from pathlib import Path
@@ -105,14 +105,20 @@ def read_generations(file, example_first_line_pattern="Example #{}:\n".format):
         yield parse_example_with_generations(lines)
 
 
+prompt_qa_format_of_mode = {
+    "example": "Please answer in a single uppercase letter: Which of the following is a better next example for the word '{word}', or they tie?\nA){}\nB){}\nC){}\nAnswer Choice:".format,
+    "definition": "Please answer in a single uppercase letter: Which of the following is a better definition for the word '{word}', or they tie?\nA){}\nB){}\nC){}\nAnswer Choice:".format,
+}
+
+
 def compare(
-        prefix,
-        gens,
+        word_example_prompt: str,
+        word: str,
+        gens: Sequence[str],
+        prompt_qa_format: Callable[..., str],
         judge = "human",
-        rng: np.random.Generator = np,  # type: ignore
-        prompt_qa_format = "Please answer in a single uppercase letter: Which of the following is a better next example for the word '{word}', or they tie?\nA){}\nB){}\nC){}\nAnswer Choice:".format,
-        word = " wug",
         unpermuted_answer_id = None,
+        rng: np.random.Generator = np,  # type: ignore
 ):
     indices = rng.permutation(len(gens) + 1) - 1
     permuted_choices = [
@@ -120,7 +126,7 @@ def compare(
         for index in indices
     ]
     prompt_qa = prompt_qa_format(*permuted_choices, word=word.strip())
-    prompt = prefix + prompt_qa
+    prompt = word_example_prompt + prompt_qa
     if unpermuted_answer_id is not None:
         answer_id = np.where(indices == unpermuted_answer_id)[0][0]
         answer = chr(ord("A") + answer_id)
@@ -208,10 +214,24 @@ if __name__ == "__main__":
              " the second one should be from the original model."
     )
     argparser.add_argument(
+        "--mode", choices=list(prompt_qa_format_of_mode.keys()),
+        default="example",
+        help="Generation mode. Either example or definition."
+    )
+    argparser.add_argument(
+        "--use_gt_word_only", action="store_true",
+        help="Show the model only the ground-truth word form in the question,"
+             " without in-context learning examples."
+    )
+    argparser.add_argument(
         "--word", nargs=2,
         default=["<|reserved_special_token_0|>", " wug"],
         help="Strings representing the new word to be learned,"
              " in the same order of their corresponding files."
+    )
+    argparser.add_argument(
+        "--sep", default="\n *",
+        help="The sep string."
     )
     argparser.add_argument(
         "--judges", nargs="+", default=["human"],
@@ -280,8 +300,18 @@ if __name__ == "__main__":
                 assert len(set(values)) == 1, f"{field} differs: {values}"
             for file_id, (example, word) in enumerate(zip(examples, args.word)):
                 assert word in example["ground-truth prefix"], f"Cannot find word '{word}' in file {file_id}"
+
+            gt_word = examples[0]['ground-truth word']
             prefix = examples[raw_id]["ground-truth prefix"]
-            prefix = prefix.removesuffix(" *")
+            if args.use_gt_word_only:
+                print(f"prefix: {prefix}")
+                word_example_prompt = ""
+                word = gt_word
+            else:
+                next_example_start_index = prefix.rfind(args.sep)
+                assert next_example_start_index >= 0, "Cannot find the start of the next example (sep) in the prefix:\n{prefix}"
+                word_example_prompt = prefix[ : next_example_start_index + 1]
+                word = args.word[raw_id]
 
             while len(results) < i_example + 1:
                 results.append({})
@@ -303,19 +333,21 @@ if __name__ == "__main__":
                         if args.skip_judged and winner_id is not None:
                             continue
                         winner_id = compare(
-                            prefix,
+                            word_example_prompt,
+                            word,
                             gens,
+                            prompt_qa_format_of_mode[args.mode],
                             judge=judge_obj,
-                            rng=rng,
-                            word=args.word[raw_id],
                             unpermuted_answer_id=winner_id,
+                            rng=rng,
                         )
                         winner_ids[judge_name] = winner_id
                         print(f"{judge_name} prediction: " + get_case_name(winner_id, id_to_name) + "!")
                         if args.pause == "judgment":
                             input()
 
-            print(f"ground-truth word: {examples[0]['ground-truth word']}")
+            if not args.use_gt_word_only:
+                print(f"ground-truth word: {gt_word}")
 
             if args.save_every_n_examples > 0 and (n_example + 1) % args.save_every_n_examples == 0:
                 with DelayedKeyboardInterrupt(), args.result_file.open("w") as result_file:
