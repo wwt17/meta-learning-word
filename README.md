@@ -60,6 +60,25 @@ This command get the statistics of the dataset in `${DATASET_DIR}`, excluding wo
 python data_loading.py stat --data ${DATASET_DIR} --freq_cutoff 9 --length_range 0 70 --n_uses_range 10 100
 ```
 
+### Process evaluation datasets
+
+#### Chimeras
+Download the [dataset file](https://github.com/NLPrinceton/ALaCarte/blob/master/data-chimeras/dataset.txt) and rename it to `chimeras.txt` (we will use `${PATH}` to refer to its path). Please be sure not to modify the file in any sense (including opening and resaving it with other encodings). The file is in mixed UTF-8 and ISO-8859-1 encoding.
+
+Then process the dataset file:
+```bash
+python generation_evaluation_data_processing.py chimeras ${PATH}
+```
+It will generate a JSON file `chimeras.json` in the same folder as `${PATH}`, which can be loaded by our code.
+
+#### Definition
+Download the dataset from the [CoLLEGe paper site](https://college-concept-learning.github.io/) (may need to ask the author for the permission to access the dataset). It should be a HuggingFace dataset (we will use `${PATH}` to refer to its path).
+
+Then process the dataset file:
+```bash
+python generation_evaluation_data_processing.py definition ${PATH}
+```
+
 ## Training models from scratch
 
 Run `main.py`. You can use `runner.py` to create and submit Slurm jobs:

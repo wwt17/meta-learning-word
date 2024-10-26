@@ -2,7 +2,7 @@ from typing import Mapping
 from collections import defaultdict
 from pathlib import Path
 import argparse
-from utils import batchify
+import sys
 import csv
 import pandas as pd
 import inflect
@@ -10,37 +10,37 @@ import re
 import json
 
 
-def merge_every_k_lines(in_file, out_file, k, header=True):
-    with open(in_file, "r") as in_f, open(out_file, "w") as out_f:
-        if header:
-            line = in_f.readline()
-            out_f.write(line)
-        for line_batch in batchify(in_f, k, drop_last=False):
-            for line in line_batch:
-                out_f.write(line.rstrip("\n"))
-            out_f.write("\n")
+def try_decode(b: bytes, encodings):
+    for encoding in encodings:
+        try:
+            return b.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise Exception(f"Cannot decode {b}")
 
 
-if __name__ == "__main__":
-    argparser = argparse.ArgumentParser()
-    argparser.add_argument("--file", type=Path, default=Path("chimeras.txt"))
-    args = argparser.parse_args()
-    merged_file = args.file.with_suffix(".tsv")
-    merge_every_k_lines(args.file, merged_file, 2, header=True)
+def process_chimeras(raw_file: Path):
+    assert raw_file.suffix != ".tsv", "The file must not have suffix .tsv"
+    clean_tsv_file = raw_file.with_suffix(".tsv")
+    print(f"Generating the clean tsv file {clean_tsv_file} ...", file=sys.stderr)
+    with open(raw_file, "rb") as in_f, \
+            open(clean_tsv_file, "w") as out_f:
+        for line in in_f:
+            decoded_line = try_decode(line, ["utf-8", "iso-8859-1"])
+            out_f.write(decoded_line.replace("\r", ""))
 
-    if False:
-        with open(merged_file, "r") as f:
-            reader = csv.reader(f, delimiter="\t", quoting=csv.QUOTE_NONE, strict=True)
-            for row_i, row in enumerate(reader):
-                print(f"{row_i}: {'|'.join(row)}")
-
-    df = pd.read_csv(merged_file, delimiter="\t", quoting=csv.QUOTE_NONE)
+    print(f"Reading the DataFrame from the clean tsv file {clean_tsv_file} ...", file=sys.stderr)
+    df = pd.read_csv(clean_tsv_file, delimiter="\t", quoting=csv.QUOTE_NONE)
+    print(f"Preprocessing the DataFrame...", file=sys.stderr)
     df = df.sort_values("TRIAL", key = lambda col: col.str.split("_").map(lambda t: [int(t[0])] + t[1:]))
     df = df.drop(axis="columns", labels=["IMAGE_PROBE_URL", "RESPONSE", "VARIANCE", "IMAGE_QUALITY", "INFORMATIVENESS_CHIMERA", "INFORMATIVENESS_CHIMERA_A", "INFORMATIVENESS_CHIMERA_B"])
     df = df[df["TRIAL"].str.endswith("_L6_A")]
     print(df)
     print(df.dtypes)
-    df.to_csv(args.file.with_suffix(".result.tsv"), sep="\t", quoting=csv.QUOTE_NONE, index=False)
+    result_tsv_file = raw_file.with_suffix(".result.tsv")
+    print(f"Writing to the result tsv file {result_tsv_file} ...", file=sys.stderr)
+    df.to_csv(result_tsv_file, sep="\t", quoting=csv.QUOTE_NONE, index=False)
+    print(f"Processing...", file=sys.stderr)
     p = inflect.engine()
     meta_dataset = defaultdict(list)
     for row in df.itertuples(index=False):
@@ -78,5 +78,23 @@ if __name__ == "__main__":
             }
             examples.append(example)
         meta_dataset[chimera].extend(examples)
-    with open(args.file.with_suffix(".json"), "w") as f:
+    result_json_file = raw_file.with_suffix(".json")
+    print(f"Writing to the result json file {result_json_file} ...", file=sys.stderr)
+    with open(result_json_file, "w") as f:
         json.dump(meta_dataset, f, indent="\t")
+
+
+def process_definition(raw_data_path: Path):
+    pass
+
+
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("mode", choices=["chimeras", "definition"])
+    argparser.add_argument("raw_data_path", type=Path)
+    args = argparser.parse_args()
+
+    {
+        "chimeras": process_chimeras,
+        "definition": process_definition,
+    }[args.mode](args.raw_data_path)
