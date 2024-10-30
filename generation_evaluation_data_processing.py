@@ -1,22 +1,42 @@
-from typing import Mapping
+from typing import Mapping, Iterable, Sequence
 from collections import defaultdict
 from pathlib import Path
 import argparse
 import sys
+import itertools
 import csv
 import pandas as pd
 import inflect
 import re
 import json
+import datasets
 
 
-def try_decode(b: bytes, encodings):
+def try_decode(b: bytes, encodings: Iterable[str]):
     for encoding in encodings:
         try:
             return b.decode(encoding)
         except UnicodeDecodeError:
             continue
     raise Exception(f"Cannot decode {b}")
+
+
+def longest_common_prefix(strs: Sequence[str]):
+    lcp = 0
+    while True:
+        c = None
+        for s in strs:
+            if len(s) <= lcp:
+                break
+            if c is None:
+                c = s[lcp]
+            elif s[lcp] != c:
+                break
+        else:
+            lcp += 1
+            continue
+        break
+    return lcp
 
 
 def process_chimeras(raw_file: Path):
@@ -78,14 +98,96 @@ def process_chimeras(raw_file: Path):
             }
             examples.append(example)
         meta_dataset[chimera].extend(examples)
-    result_json_file = raw_file.with_suffix(".json")
-    print(f"Writing to the result json file {result_json_file} ...", file=sys.stderr)
-    with open(result_json_file, "w") as f:
-        json.dump(meta_dataset, f, indent="\t")
+
+    return meta_dataset
 
 
-def process_definition(raw_data_path: Path):
-    pass
+def process_definition(
+        raw_data_path: Path,
+        ph_pattern: re.Pattern = re.compile("<nonce>"),
+        correct_errors: bool = True,
+):
+    raw_data = datasets.load_from_disk(str(raw_data_path))
+    my_dataset = {}
+    cnt = 0
+    for row in raw_data:
+        assert isinstance(row, dict)
+        assert len(row["gpt_examples"]) == len(row["replaced_examples"])
+        my_examples = []
+        replaced_texts = []
+        for example, replaced_example in zip(row["gpt_examples"], row["replaced_examples"]):
+            assert isinstance(example, str)
+            assert isinstance(replaced_example, str)
+            retained_texts_ = []
+            last_index = 0
+            for match in ph_pattern.finditer(replaced_example):
+                retained_texts_.append(replaced_example[last_index:match.start()])
+                last_index = match.end()
+            else:
+                retained_texts_.append(replaced_example[last_index:])
+            last_index = 0
+            replaced_texts_ = []
+            offsets = []
+            for retained_text in retained_texts_:
+                index = example.index(retained_text, last_index)
+                offsets.append((last_index, index))
+                replaced_texts_.append(example[last_index:index])
+                last_index = index + len(retained_text)
+            assert replaced_texts_[0] == ""
+            offsets.pop(0)
+            replaced_texts_.pop(0)
+            assert last_index == len(example)
+            replaced_texts.append(replaced_texts_)
+            my_example = dict(sentence=example, offsets=offsets)
+            my_examples.append(my_example)
+
+        if correct_errors:
+            # special cases
+            if row["word"] == "capital gains tax":
+                # simply search all occurrences
+                word_pattern = re.compile(row["word"])
+                for my_example in my_examples:
+                    my_example["offsets"] = [match.span() for match in word_pattern.finditer(my_example["sentence"])]
+            else: # general cases
+                unique_replaced_texts = set(itertools.chain.from_iterable(replaced_texts))
+                uncased_unique_replaced_texts = sorted(
+                    set(map(str.lower, unique_replaced_texts)),
+                    key = lambda w: (len(w), w)
+                )
+                assert uncased_unique_replaced_texts[0] == row["word"].lower(), f"{row['word']}: {uncased_unique_replaced_texts}"
+                if len(uncased_unique_replaced_texts) == 1:
+                    pass # assume no errors
+                elif len(uncased_unique_replaced_texts) == 2:
+                    lcp = longest_common_prefix(uncased_unique_replaced_texts)
+                    suffix = uncased_unique_replaced_texts[1][lcp:]
+                    if suffix.endswith("s"):
+                        adjust_suffix_length = 1
+                    elif suffix.endswith("d"):
+                        assert uncased_unique_replaced_texts[1].endswith("ed")
+                        adjust_suffix_length = 2
+                    elif suffix.endswith("ly"):
+                        adjust_suffix_length = 2
+                    else:
+                        print(f"{lcp=}")
+                        cnt += 1
+                        print(f"{cnt=}")
+                        print(json.dumps(row, indent=2))
+                        print(replaced_texts)
+                        assert False
+                    # adjust offsets
+                    for my_example in my_examples:
+                        for i, offset in enumerate(my_example["offsets"]):
+                            if my_example["sentence"][offset[0]:offset[1]].lower() == uncased_unique_replaced_texts[1]:
+                                offset = (offset[0], offset[1] - adjust_suffix_length)
+                            my_example["offsets"][i] = offset
+                else:
+                    assert False, f"Word used in too many forms: {uncased_unique_replaced_texts}"
+
+        my_definition_example = dict(label="definition", sentence=row["scoring_definition"], offsets=[])
+        my_examples.append(my_definition_example)
+        my_dataset[row["word"]] = my_examples
+
+    return my_dataset
 
 
 if __name__ == "__main__":
@@ -94,7 +196,13 @@ if __name__ == "__main__":
     argparser.add_argument("raw_data_path", type=Path)
     args = argparser.parse_args()
 
-    {
+    result_dataset = {
         "chimeras": process_chimeras,
         "definition": process_definition,
     }[args.mode](args.raw_data_path)
+
+    print(f"Total: {len(result_dataset)} words")
+    result_json_file = args.raw_data_path.with_suffix(".json")
+    print(f"Writing to the result json file {result_json_file} ...", file=sys.stderr)
+    with open(result_json_file, "w") as f:
+        json.dump(result_dataset, f, indent="\t")
