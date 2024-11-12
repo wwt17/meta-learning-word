@@ -185,7 +185,10 @@ def process_definition(
 
         my_definition_example = dict(label="definition", sentence=row["scoring_definition"], offsets=[])
         my_examples.append(my_definition_example)
-        my_dataset[row["word"]] = my_examples
+        if row["word"] in my_dataset:
+            print(f'Warning: Duplicated word "{row["word"]}"')
+        else:
+            my_dataset[row["word"]] = my_examples
 
     return my_dataset
 
