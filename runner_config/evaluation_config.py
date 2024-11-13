@@ -43,26 +43,29 @@ grids = {
     "pretrained_LM": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word", r"chimeras.json"][:2],
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word", r"chimeras.json", r"def_task.json"][-1:],
+            #"split": ["test"],
             #"data_order": ["original"],
+            "append_to_prefix": [f" The word{new_word} in the above sentence(s) is defined as"],
             "pretrained_model": [
                 *(f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']),
                 "gpt2",
                 llama_path+r"/Meta-Llama-3-8B",
                 llama_path+r"/Meta-Llama-3-8B-Instruct",
-            ][-1:],
+            ][-2:],
             #"revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
-            "n_examples": list(range(2, 11)),
-            "eval_n_classes": [tuple(range(2, 11))],
+            "n_examples": [2, 3, 4, 5, 10][:3],
+            "eval_n_classes": [(4, 8)],
             "print_decoded_prefix": [True],
-            "new_word": [" dax", " wug"][0:1],
+            "new_word": [new_word],
             "prompt": [
                 "",
-                "The following lines are lowercased example sentences using a new word 'dax' in random order, one per line:",
-                "The following lines are example sentences using a new word 'wug' in random order, one per line:",
-            ][1:2],
+                f"The following lines are lowercased example sentences using a new word '{new_word.strip()}', one per line:",
+            ][:1],
             "sep": [" *"],
+            "max_new_tokens": [100],
         }
+        for new_word in ["", " dax", " wug"][-1:]
     ],
     "pythia_finetuned": [
         {
@@ -91,18 +94,16 @@ grids = {
     "Llama_finetuned": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"chimeras.json"][-1:],
-            "data_order": ["original"],
+            "data_dir": [c["data_dir"], r"chimeras.json", r"def_task.json"][-1:],
+            #"split": ["test"],
+            #"data_order": ["original"],
+            "append_to_prefix": [f" The word<|reserved_special_token_0|> in the above sentence(s) is defined as"],
             "pretrained_model": [
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0003_seed_0_eval_step_1000/best",
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0001_seed_0_eval_step_1000/best",
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_prompt_n_examples_10_max_sample_times_0_batch_size_8_lr_0.001_seed_0/best",
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_prompt_n_examples_10_max_sample_times_0_batch_size_8_lr_0.0003_seed_0_eval_step_1000/best",
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:childes:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_80_batch_size_32_lr_0.003_seed_0_eval_step_1000/best",
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best",
-            ][-2:],
+                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best"
+                for seed in [0, 1, 2]
+            ],
             "tokenizer": [llama_path+r"/Meta-Llama-3-8B"],
-            "n_examples": list(range(5, 6)),
+            "n_examples": [2, 3, 4, c["n_examples"]][:3],
             "eval_n_classes": [tuple(range(2, 11))],
             "print_decoded_prefix": [True],
             "new_word": ["<|reserved_special_token_0|>"],
@@ -111,28 +112,64 @@ grids = {
                 "<|reserved_special_token_2|><|reserved_special_token_3|><|reserved_special_token_4|><|reserved_special_token_5|><|reserved_special_token_6|>",
             ][0:1],
             "sep": ["<|reserved_special_token_1|>"],
+            "max_new_tokens": [100],
         }
+        for c in [
+            {
+                "data_dir": "word_use_data/childes/word",
+                "n_examples": 5,
+                "batch_size": 32,
+                "lr": 3e-3,
+                "train_max_length": 80,
+            },
+            {
+                "data_dir": "word_use_data/childes/word",
+                "n_examples": 10,
+                "batch_size": 8,
+                "lr": 3e-4,
+                "train_max_length": 160,
+            },
+            {
+                "data_dir": "word_use_data/babylm_data/babylm_10M/word",
+                "n_examples": 5,
+                "batch_size": 16,
+                "lr": 1e-3,
+                "train_max_length": 160,
+            },
+        ]
     ],
-}["meta_trained_with_pythia_arch"]
+}["Llama_finetuned"]
 # ordered flags to display in job name
 flags = [
     "data_dir",
-    "split",
+    #"split",
     #"data_order",
     #"pretrained_model",
     #"revision",
     #"prompt",
+    #"new_word",
     "n_examples",
+    "max_new_tokens",
 ]
 
 syntactic = False
 if syntactic:
     grids = [
         {
-            "main_file": grid["main_file"],
             "data_dir": ["syntactic"],
             "split": [("dev", "test")],
-            "pretrained_model": grid["pretrained_model"],
+            **{
+                key: grid[key]
+                for key in [
+                    "main_file",
+                    "pretrained_model",
+                    "tokenizer",
+                    "new_word",
+                    "prompt",
+                    "sep",
+                ]
+                if key in grid
+            }
         }
         for grid in grids
     ]
