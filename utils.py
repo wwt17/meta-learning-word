@@ -246,7 +246,7 @@ def clean_up_tokenization_spaces_for_example(
     new_sentence = tokenization_space_pattern.sub(_repl, sentence)
     offset_mapping = np.insert(np.cumsum(char_is_retained), 0, 0)
     new_offsets = [list(offset_mapping[np.array(offset)]) for offset in offsets]
-    return {"sentence": new_sentence, "offsets": new_offsets}
+    return {**example, "sentence": new_sentence, "offsets": new_offsets}
 
 
 def prepend_to_example(prepend_str: str, example):
@@ -254,7 +254,7 @@ def prepend_to_example(prepend_str: str, example):
     new_sentence = prepend_str + sentence
     offset_shift = len(prepend_str)
     new_offsets = [[offset_shift + o for o in offset] for offset in offsets]
-    return {"sentence": new_sentence, "offsets": new_offsets}
+    return {**example, "sentence": new_sentence, "offsets": new_offsets}
 
 
 def _offset_with_leading_space(

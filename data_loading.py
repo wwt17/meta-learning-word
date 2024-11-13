@@ -178,7 +178,7 @@ def read_meta_episodes(
 
 def sample_examples(
         data: datasets.Dataset,
-        n_examples: int,
+        n_examples: Union[int, Sequence[tuple[Optional[str], int]]],
         max_sample_times: Optional[int] = None,
         rng: Any = np.random,
         column_name: str = "examples",
@@ -187,6 +187,8 @@ def sample_examples(
     Args:
         data: a Dataset containing a column with column_name, which contains list of examples.
         n_examples: Number of examples in each sample.
+            If it is a single int, sample from all examples;
+            If it is a sequence of (label or None, int) tuples, sample the corresponding (int) number of examples in each label.
         rng: Random number generator. If is None, get the first several samples in the same order.
         max_sample_times: Max sample times for each word. If None, sample as many times as allowed.
         column_name: The column name for sampled examples.
@@ -195,20 +197,46 @@ def sample_examples(
         ret = defaultdict(list)
         for row in zipdict(batch):
             examples = row[column_name]
-            sample_times = len(examples) // n_examples
+            if isinstance(n_examples, int):
+                classified_examples = [(examples, n_examples)]
+            else:
+                classified_examples = [
+                    (
+                        [example
+                         for example in examples
+                         if example.get("label", None) == label
+                        ],
+                        label_n_examples
+                    )
+                    for label, label_n_examples in n_examples
+                ]
+            sample_times = min((
+                len(label_examples) // label_n_examples
+                for label_examples, label_n_examples in classified_examples
+            ))
             if max_sample_times:
                 sample_times = min(sample_times, max_sample_times)
-            sample_size = sample_times * n_examples
-            sample_examples = (
-                examples[:sample_size]
-                if rng is None else
-                rng.choice(examples, size=sample_size, replace=False)
-            )
-            for i in range(sample_times):
+            classified_samples = []
+            for label_examples, label_n_examples in classified_examples:
+                sample_size = sample_times * label_n_examples
+                label_sample_examples = (
+                    label_examples[:sample_size]
+                    if rng is None else
+                    rng.choice(label_examples, size=sample_size, replace=False)
+                )
+                classified_samples.append(
+                    [
+                        label_sample_examples[i : i + label_n_examples]
+                        for i in range(0, sample_size, label_n_examples)
+                    ]
+                )
+            for classified_sample in zip(*classified_samples):
                 for key, value in row.items():
                     if key != column_name:
                         ret[key].append(value)
-                ret[column_name].append(list(sample_examples[i*n_examples:(i+1)*n_examples]))
+                sample = list(chain.from_iterable(classified_sample))
+                ret[column_name].append(sample)
+
         return ret
 
     return data.map(_get_samples, batched=True)
@@ -303,6 +331,15 @@ def load_dataset(
     else:
         lm_dataset = None  # type: ignore
     return meta_dataset, lm_dataset
+
+
+def is_definition_dataset(
+        data: datasets.Dataset,
+        column_name: str = "examples",
+        label: str = "definition",
+):
+    examples = data[0][column_name]
+    return any((example.get("label", None) == label for example in examples))
 
 
 def load_data_tokenizer(

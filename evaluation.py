@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 import datasets
 import transformers
 from transformers import AutoModelForCausalLM, set_seed
-from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples
+from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples,  is_definition_dataset
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls, evaluate_cls_with_fixed_words
 from utils import frac_repr, merge_input_output_dict
@@ -320,7 +320,11 @@ def load_meta_data_sources(
             print(f'{prefix}n_words: {len(data)}')
             dataset = sample_examples(
                 data,
-                args.n_examples,
+                (
+                    [(None, args.n_examples - 1), ("definition", 1)]
+                    if is_definition_dataset(data) else
+                    args.n_examples
+                ),
                 max_sample_times = args.max_sample_times,
                 rng = None if args.data_order == "original" else np.random.default_rng(args.seed),
             )
