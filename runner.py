@@ -119,12 +119,12 @@ for job in jobs:
             flagstring += f' --{flag}'
             if isinstance(value, (list, tuple)):
                 for v in value:
-                    flagstring += f' "{v}"'
+                    flagstring += f" '{v}'"
             else:
-                flagstring += f' "{value}"'
+                flagstring += f" '{value}'"
 
     if args.run_name_flag:
-        flagstring += f' --{args.run_name_flag} "{job_name}"'
+        flagstring += f" --{args.run_name_flag} '{job_name}'"
 
     # create slurm script and slurm log dirs
     slurm_log_dir = log_dir / job_name_for_log
@@ -162,7 +162,7 @@ f"""
 """ + wrapped_command)
 
     try:
-        submitting = args.submit and (args.no_confirm or click.confirm("Submit job?", default=True))
+        submitting = args.submit and (args.no_confirm or click.confirm(f'Submit job {slurm_script_path}?', default=True))
     except click.exceptions.Abort:
         print()
         break
