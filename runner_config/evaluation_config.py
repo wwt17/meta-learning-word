@@ -46,7 +46,7 @@ grids = {
             "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word", r"chimeras.json", r"def_task.json"][-1:],
             #"split": ["test"],
             #"data_order": ["original"],
-            "append_to_prefix": [f" The word{new_word} in the above sentence(s) is defined as"],
+            "append_to_prefix": [f' The word{new_word} in the above sentence(s) is defined as "'],
             "pretrained_model": [
                 *(f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']),
                 "gpt2",
@@ -97,7 +97,7 @@ grids = {
             "data_dir": [c["data_dir"], r"chimeras.json", r"def_task.json"][-1:],
             #"split": ["test"],
             #"data_order": ["original"],
-            "append_to_prefix": [f" The word<|reserved_special_token_0|> in the above sentence(s) is defined as"],
+            "append_to_prefix": [f' The word<|reserved_special_token_0|> in the above sentence(s) is defined as "'],
             "pretrained_model": [
                 f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best"
                 for seed in [0, 1, 2]
