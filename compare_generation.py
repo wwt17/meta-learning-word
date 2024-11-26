@@ -105,6 +105,19 @@ def read_generations(file, example_first_line_pattern="Example #{}:\n".format):
         yield parse_example_with_generations(lines)
 
 
+def extract_definition_from_generation(gen: str):
+    try:
+        # Assume the prompt ends with a double-quote, so we expect the generated definition ends at another double-quote.
+        quote_index = gen.index('"')
+    except ValueError: # Cannot find the double-quote
+        pass # use the whole generation
+    else:
+        gen = gen[:quote_index] # use the quoted content
+    # for better formatting
+    gen = ' ' + gen.strip()
+    return gen
+
+
 prompt_qa_format_of_mode = {
     "example": "Please answer in a single uppercase letter: Which of the following is a better next example for the word '{word}', or they tie?\nA){}\nB){}\nC){}\nAnswer Choice:".format,
     "definition": "Please answer in a single uppercase letter: Which of the following is a better definition for the word '{word}', or they tie?\nA){}\nB){}\nC){}\nAnswer Choice:".format,
@@ -134,6 +147,7 @@ def compare(
     else:
         if isinstance(judge, str) and judge.startswith("gpt"):
             # openai
+            print(f"prompt:\n{prompt}")
             completion = client.chat.completions.create(
                 model=judge,
                 messages=[
@@ -155,6 +169,7 @@ def compare(
                 answer = answer.strip()[:1].upper()
         else:
             # outline
+            print(f"prompt:\n{prompt}")
             answer = judge.generate_choice(prompt, ['A', 'B', 'C'])
         answer_id = ord(answer) - ord("A")
         unpermuted_answer_id = int(indices[answer_id])
@@ -327,6 +342,11 @@ if __name__ == "__main__":
                     while len(field_results) < n_gen + 1:
                         field_results.append({})
                     gens[ft_id] = gens[ft_id].replace(args.word[ft_id], args.word[raw_id])
+                    if args.mode == "definition":
+                        gens = list(map(
+                            extract_definition_from_generation,
+                            gens
+                        ))
                     winner_ids = field_results[n_gen]
                     for judge_name, judge_obj in judges.items():
                         winner_id = winner_ids.get(judge_name, None)
