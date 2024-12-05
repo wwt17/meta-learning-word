@@ -12,3 +12,7 @@ thinc~=8.2.3
 wandb~=0.17.2
 click
 tqdm
+evaluate~=0.4.3
+bert-score~=0.3.13
+nltk~=3.9.1
+rouge_score~=0.1.2

@@ -86,3 +86,9 @@ def extract_definition_from_generation(gen: str):
     # for better formatting
     gen = ' ' + gen.strip()
     return gen
+
+
+def extract_definition_from_reference_generation(gen: str, nlp):
+    doc = nlp(gen)
+    sent = next(doc.sents)
+    return str(sent)
