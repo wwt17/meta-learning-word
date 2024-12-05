@@ -120,6 +120,7 @@ if __name__ == "__main__":
                         ))
                     if replace_word is not None:
                         value = [g.replace(word, replace_word) for g in value]
+                    value = [g.strip() for g in value]
                     gens[field] = value
 
                 records.append((gens, ref))
