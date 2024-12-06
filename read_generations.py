@@ -89,6 +89,7 @@ def extract_definition_from_generation(gen: str):
 
 
 def extract_definition_from_reference_generation(gen: str, nlp):
+    gen = gen.strip()  # strip spaces to avoid potential empty sents
     doc = nlp(gen)
     sent = next(doc.sents)
     return str(sent)
