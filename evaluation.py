@@ -12,7 +12,7 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 import datasets
 import transformers
-from transformers import AutoModelForCausalLM, set_seed
+from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, set_seed
 from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples,  is_definition_dataset
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls, evaluate_cls_with_fixed_words
@@ -49,6 +49,7 @@ def evaluate_gen(
         dataset: Iterable,
         tokenizer,
         model: transformers.PreTrainedModel,
+        model_type: str,
         generation_config: transformers.generation.GenerationConfig,
         stopping_criteria = None,
         top_p: float = 1.0,
@@ -62,6 +63,7 @@ def evaluate_gen(
         print_decoded_prefix: bool = False,
         print_gt_full: bool = False,
         print_top_k_pred: int = 0,
+        skip_eos_token: bool = False,
         skip_stop_string: Optional[str] = None,
         interactive: bool = False,
 ):
@@ -78,7 +80,7 @@ def evaluate_gen(
 
         def _print_outputs(
                 outputs,
-                skip_eos_token: bool = False,
+                skip_eos_token: bool = skip_eos_token,
                 skip_stop_string: Optional[str] = skip_stop_string,
                 skip_special_tokens: bool = False,  # TODO: skip other special tokens but retain the new word
                 clean_up_tokenization_spaces: bool = False,
@@ -92,8 +94,17 @@ def evaluate_gen(
                     sequence_length -= 1
                 if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == generation_config.eos_token_id:
                     sequence_length -= 1
+                if model_type == "causal":
+                    start_idx = len(prefix_input.input_ids[0])
+                elif model_type == "seq2seq":
+                    start_idx = 0
+                    # strip starting pad tokens (for T5 models)
+                    while start_idx < sequence_length and sequence[start_idx].item() == tokenizer.pad_token_id:
+                        start_idx += 1
+                else:
+                    raise ValueError(f"Unknown language model type {model_type}")
                 output_string = tokenizer.decode(
-                    sequence[len(prefix_input.input_ids[0]):sequence_length],
+                    sequence[start_idx:sequence_length],
                     skip_special_tokens=skip_special_tokens,
                     clean_up_tokenization_spaces=clean_up_tokenization_spaces,
                     **kwargs
@@ -114,6 +125,7 @@ def evaluate_gen(
 
         if print_gt_full:
             print("ground-truth   full:", full_str)
+            assert model_type == "causal", f"Only support ground-truth full sequence for causal LMs, but have a {model_type} LM"
             gt_outputs = model(
                 **full_input,
                 return_dict=True,
@@ -192,7 +204,9 @@ def evaluate_generation(
         tokenizer,
         in_context_format: InContextFormat,
         model: transformers.PreTrainedModel,
+        model_type: str,
         args,
+        skip_eos_token: bool = False,
 ):
     stop_string: str = in_context_format.sep  # type: ignore
     eos_token_id: int = tokenizer(stop_string)['input_ids'][-1]
@@ -209,6 +223,7 @@ def evaluate_generation(
             dataset,
             tokenizer,
             model,
+            model_type,
             generation_config,
             #stopping_criteria = transformers.StoppingCriteriaList([StopSubStringCriteria(tokenizer, stop_string, len(prefix_input.input_ids[0]))]),
             top_p=args.top_p,
@@ -221,6 +236,7 @@ def evaluate_generation(
             print_decoded_prefix=args.print_decoded_prefix,
             print_gt_full=args.print_gt_full,
             print_top_k_pred=args.print_top_k_pred,
+            skip_eos_token=skip_eos_token,
             skip_stop_string=stop_string,
             interactive=args.interactive,
         )
@@ -437,12 +453,28 @@ if __name__ == "__main__":
         new_tokens=args.add_tokens,
     )
 
-    in_context_format = set_and_get_format(tokenizer, args)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        device_map=device,
+    auto_model_cls_mapping = {
+        "causal": AutoModelForCausalLM,
+        "seq2seq": AutoModelForSeq2SeqLM,
+    }
+    for model_type, auto_model_cls in auto_model_cls_mapping.items():
+        try:
+            model = auto_model_cls.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                device_map=device,
+            )
+        except ValueError as exception:
+            pass
+        else:
+            break
+    else:
+        raise exception  # type: ignore
+    in_context_format = set_and_get_format(
+        tokenizer,
+        args,
+        sep_prefix = "" if model_type == "seq2seq" else "\n",
+        set_pad_to_eos = model_type != "seq2seq",
     )
     if n_added_tokens:
         print("Warning: may use untrained token embeddings")
@@ -512,5 +544,7 @@ if __name__ == "__main__":
             tokenizer,
             in_context_format,
             model,
+            model_type,
             args,
+            skip_eos_token = model_type == "seq2seq",
         )

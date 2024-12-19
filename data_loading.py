@@ -434,13 +434,14 @@ def load_tokenizer(
     return tokenizer, n_added_tokens
 
 
-def set_and_get_format(tokenizer, args):
+def set_and_get_format(tokenizer, args, sep_prefix: str = "\n", set_pad_to_eos: bool = True):
     t = None if args.no_new_token else args.new_word
     if tokenizer is None:
-        sep = "\n" + args.sep
+        sep = sep_prefix + args.sep
     elif not is_data_tokenizer(tokenizer):  # pretrained tokenizer
-        sep = "\n" + args.sep
-        tokenizer.pad_token = tokenizer.eos_token
+        sep = sep_prefix + args.sep
+        if set_pad_to_eos:
+            tokenizer.pad_token = tokenizer.eos_token
     else:  # my own tokenizer
         # must not provide token_type_ids to the model
         tokenizer.model_input_names = ['input_ids', 'attention_mask']
