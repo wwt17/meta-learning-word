@@ -9,6 +9,11 @@ from pathlib import Path
 import copy
 import importlib
 
+
+def escape(s: str, c: str):
+    return s.replace(c, '\\'+c)
+
+
 argparser = argparse.ArgumentParser(
     description="Generate and optionally submit slurm jobs. runner_config.py is the configuration file.")
 argparser.add_argument("--job_name_base", default="meta-word",
@@ -117,11 +122,11 @@ for job in jobs:
                 print("WARNING: Excluding 'False' flag " + flag)
         else:
             flagstring += f' --{flag}'
-            if isinstance(value, (list, tuple)):
-                for v in value:
-                    flagstring += f" '{v}'"
-            else:
-                flagstring += f" '{value}'"
+            if not isinstance(value, (list, tuple)):
+                value = [value]
+            for v in value:
+                escaped_v = escape(str(v), r"'")
+                flagstring += f" $'{escaped_v}'"
 
     if args.run_name_flag:
         flagstring += f" --{args.run_name_flag} '{job_name}'"
@@ -144,7 +149,7 @@ for job in jobs:
     print(jobcommand)
     with slurm_script_path.open('w') as slurmfile:
         if args.singularity:
-            escaped_jobcommand = jobcommand.replace(r'"', r'\"')
+            escaped_jobcommand = escape(jobcommand, r'"')
             wrapped_command = f"""
 shopt -s expand_aliases
 source ~/.bashrc
