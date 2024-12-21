@@ -145,31 +145,33 @@ def evaluate_gen(
         )
         _print_outputs(greedy_outputs)
 
-        print(f"sample with top-p={top_p:.2f} outputs:")
-        sample_outputs = model.generate(
-            **prefix_input,
-            generation_config=generation_config,
-            stopping_criteria=stopping_criteria,
-            do_sample=True,
-            top_k=0,
-            top_p=top_p,
-            temperature=temperature,
-            num_return_sequences=num_return_sequences,
-        )
-        _print_outputs(sample_outputs)
+        if top_p:
+            print(f"sample with top-p={top_p:.2f} outputs:")
+            sample_outputs = model.generate(
+                **prefix_input,
+                generation_config=generation_config,
+                stopping_criteria=stopping_criteria,
+                do_sample=True,
+                top_k=0,
+                top_p=top_p,
+                temperature=temperature,
+                num_return_sequences=num_return_sequences,
+            )
+            _print_outputs(sample_outputs)
 
-        print("beam search outputs:")
-        beam_outputs = model.generate(
-            **prefix_input,
-            generation_config=generation_config,
-            stopping_criteria=stopping_criteria,
-            num_beams=num_beams,
-            length_penalty=length_penalty,
-            no_repeat_ngram_size=no_repeat_ngram_size,
-            early_stopping=early_stopping,
-            num_return_sequences=num_return_sequences,
-        )
-        _print_outputs(beam_outputs)
+        if num_beams > 1:
+            print("beam search outputs:")
+            beam_outputs = model.generate(
+                **prefix_input,
+                generation_config=generation_config,
+                stopping_criteria=stopping_criteria,
+                num_beams=num_beams,
+                length_penalty=length_penalty,
+                no_repeat_ngram_size=no_repeat_ngram_size,
+                early_stopping=early_stopping,
+                num_return_sequences=num_return_sequences,
+            )
+            _print_outputs(beam_outputs)
 
         if interactive:
             input()
