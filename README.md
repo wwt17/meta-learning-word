@@ -69,15 +69,25 @@ Then process the dataset file:
 ```bash
 python generation_evaluation_data_processing.py chimeras ${PATH}
 ```
-It will generate a JSON file `chimeras.json` in the same folder as `${PATH}`, which can be loaded by our code.
+It will generate a JSON file with the same stem in the same folder as `${PATH}`, which can be loaded by our code.
 
-#### Definition
+#### CoLLEGe-DefGen
 Download the dataset from the [CoLLEGe paper site](https://college-concept-learning.github.io/) (may need to ask the author for the permission to access the dataset). It should be a HuggingFace dataset (we will use `${PATH}` to refer to its path).
 
 Then process the dataset file:
 ```bash
-python generation_evaluation_data_processing.py definition ${PATH}
+python generation_evaluation_data_processing.py defgen ${PATH}
 ```
+It will generate a JSON file with the same stem in the same folder as `${PATH}`, which can be loaded by our code.
+
+#### Oxford
+Download and extract the dataset as described [here](https://github.com/shonosuke/ishiwatari-naacl2019#download-dataset). Say the path to the extracted directory is `${DEFINITION_DATA_PATH}`. Let `PATH=${DEFINITION_DATA_PATH}/oxford/test` (you may replace `test` with another split or `oxford` with another subfolder if you want).
+
+Then process the dataset file:
+```bash
+python generation_evaluation_data_processing.py ishiwatari ${PATH}
+```
+It will generate a JSON file with the same stem in the same folder as `${PATH}`, which can be loaded by our code.
 
 ## Training models from scratch
 
