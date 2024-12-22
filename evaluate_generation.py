@@ -26,9 +26,8 @@ if __name__ == "__main__":
         help="The files of evaluation outputs."
     )
     argparser.add_argument(
-        "--mode", choices=["example", "definition"],
-        default="example",
-        help="Generation mode. Either example or definition."
+        "--mode", choices=["definition"],
+        help="If set to definition, will extract definitions."
     )
     argparser.add_argument(
         "--word", nargs="+",
