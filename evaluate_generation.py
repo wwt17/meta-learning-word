@@ -26,8 +26,10 @@ if __name__ == "__main__":
         help="The files of evaluation outputs."
     )
     argparser.add_argument(
-        "--mode", choices=["definition"],
-        help="If set to definition, will extract definitions."
+        "--extract_definition_from_reference_generation", action="store_true",
+    )
+    argparser.add_argument(
+        "--extract_definition_from_generation", action="store_true",
     )
     argparser.add_argument(
         "--word", nargs="+",
@@ -105,14 +107,14 @@ if __name__ == "__main__":
                 except ValueError:
                     raise Exception(f"Cannot find separator in {gt_suffix}")
                 ref = gt_suffix[:sep_index]
-                if args.mode == "definition":
+                if args.extract_definition_from_reference_generation:
                     ref = extract_definition_from_reference_generation(ref, nlp)
                 ref = ref.strip()
 
                 gens = {}
                 for field in used_output_fields:
                     value = example[field][:args.n_gens]
-                    if args.mode == "definition":
+                    if args.extract_definition_from_generation:
                         value = list(map(
                             extract_definition_from_generation,
                             value
