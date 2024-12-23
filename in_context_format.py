@@ -1,4 +1,5 @@
 from typing import Optional, Iterable, Callable
+import re
 from utils import example_str
 from text_configs import NEW_TOKEN
 
@@ -143,5 +144,14 @@ class InContextFormat:
             (examples[:-last_n], examples[-last_n:])
         )
         prefix, suffix = self(prefix_examples, suffix_examples)
-        prefix += append_to_prefix
+        if self.t is None:
+            word = item["word"]
+            # extract the word form from word sense in the ishiwatari dataset
+            m = re.fullmatch(r'(\S+)%(\S+\.\d+)', word)
+            if m:
+                word = m[1]
+            new_word = ' ' + word
+        else:
+            new_word = self.t
+        prefix += append_to_prefix.format(new_word=new_word)
         return {"prefix": prefix, "suffix": suffix}
