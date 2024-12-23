@@ -391,6 +391,7 @@ if __name__ == "__main__":
     )
     argparser.add_argument(
         "--append_to_prefix", default="",
+        help="Append this string to the prefix. Can have a variable new_word to be substituted by the new word to be learned."
     )
     argparser.add_argument(
         "--eval_n_classes", type=int, nargs="*", default=[],
