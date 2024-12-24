@@ -1,3 +1,4 @@
+import os
 import argparse
 import copy
 import re
@@ -7,6 +8,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from itertools import combinations
+
+
+try:
+    llama_path = os.environ["SCRATCH"]
+except KeyError:
+    llama_path = '.'
+pretrained_models = {
+    'Llama-3-8B': llama_path+r'/Meta-Llama-3-8B',
+    'Llama-3-8B-Instruct': llama_path+r'/Meta-Llama-3-8B-Instruct',
+}
 
 
 syn_ctgs = ["n", "v", "adj", "adv"]
@@ -55,11 +66,33 @@ def zipdicts(*ds):
 if __name__ == "__main__":
     filenames = [
         #f"ckpt/meta-word_data_dir_word_use_data:childes:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.07_seed_{seed}/best/{eval_name}/slurm.out"
-        f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{n_examples}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_{seed}/best/{eval_name}/slurm.out"
-        for n_examples in [5, 10][:1]
+        #f"ckpt/meta-word_data_dir_word_use_data:babylm_data:babylm_10M:word_config_model_config:pythia-160m_concat_False_no_new_token_False_n_examples_{c['n_examples']}_max_sample_times_0_batch_size_8_lr_0.0003_weight_decay_0.15_seed_{seed}/best/{eval_name}/slurm.out"
+        f"ckpt/meta-word_pretrained_model_{pretrained_models['Llama-3-8B'].replace('/', ':')}_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best/{eval_name}/slurm.out"
+        for c in [
+            {
+                "data_dir": "word_use_data/childes/word",
+                "n_examples": 5,
+                "batch_size": 32,
+                "lr": 3e-3,
+                "train_max_length": 80,
+            },
+            {
+                "data_dir": "word_use_data/childes/word",
+                "n_examples": 10,
+                "batch_size": 8,
+                "lr": 3e-4,
+                "train_max_length": 160,
+            },
+            {
+                "data_dir": "word_use_data/babylm_data/babylm_10M/word",
+                "n_examples": 5,
+                "batch_size": 16,
+                "lr": 1e-3,
+                "train_max_length": 160,
+            },
+        ][2:3]
         for eval_name in [
-            f"meta-word-eval_data_dir_word_use_data:childes:word_split_test_n_examples_{n_examples}",
-            f"meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_{n_examples}",
+            f"meta-word-eval_data_dir_{c['data_dir'].replace('/', ':')}_split_test_n_examples_{c['n_examples']}_max_new_tokens_100",
             "meta-word-eval_data_dir_syntactic",
         ][1:2]
         for seed in [0, 1, 2]

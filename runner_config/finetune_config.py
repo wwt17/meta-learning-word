@@ -3,7 +3,10 @@ import os
 grids = [
     {
         "main_file": ["main.py"],
-        "pretrained_model": [os.environ["SCRATCH"]+r"/Meta-Llama-3-8B"],
+        "pretrained_model": [
+            os.environ["SCRATCH"]+r"/Meta-Llama-3-8B",
+            os.environ["SCRATCH"]+r"/Meta-Llama-3-8B-Instruct",
+        ][:1],
         "new_word": ["<|new_word|>", "<|reserved_special_token_0|>"][-1:],
         "embedding_init": ["mean"],
         "prompt": [

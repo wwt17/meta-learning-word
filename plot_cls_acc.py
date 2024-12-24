@@ -1,3 +1,4 @@
+import os
 import argparse
 import copy
 import re
@@ -10,6 +11,16 @@ import seaborn as sns
 attr_patterns = {
     "#examples": r"_n_examples_(\d+)",
     "step": r"_step(\d+)",
+}
+
+
+try:
+    llama_path = os.environ["SCRATCH"]
+except KeyError:
+    llama_path = '.'
+pretrained_models = {
+    'Llama-3-8B': llama_path+r'/Meta-Llama-3-8B',
+    'Llama-3-8B-Instruct': llama_path+r'/Meta-Llama-3-8B-Instruct',
 }
 
 
@@ -123,7 +134,7 @@ if __name__ == "__main__":
             for n_examples in range(2, 11)
         ],
         "Pretrained Llama-3-8B on CHILDES": [
-            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_{n_examples}/slurm.out"
+            f"ckpt/meta-word-eval_data_dir_word_use_data:childes:word_pretrained_model_{pretrained_models['Llama-3-8B'].replace('/', ':')}_n_examples_{n_examples}/slurm.out"
             for n_examples in range(2, 11)
         ],
         "Pythia-70M on CHILDES": [

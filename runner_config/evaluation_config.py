@@ -4,7 +4,7 @@ import itertools
 try:
     llama_path = os.environ["SCRATCH"]
 except KeyError:
-    llama_path = ""
+    llama_path = "."
 
 grids = {
     "meta-trained_on_childes_with_gpt2_arch": [
@@ -43,27 +43,35 @@ grids = {
     "pretrained_LM": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word", r"chimeras.json", r"def_task.json"][-1:],
+            "data_dir": [r"word_use_data/childes/word", r"word_use_data/babylm_data/babylm_10M/word", r"word_use_data/babylm_data/babylm_100M/word", r"chimeras.json", r"def_task.json", r"oxford.json"][-1:],
             #"split": ["test"],
             #"data_order": ["original"],
-            "append_to_prefix": [f' The word{new_word} in the above sentence(s) is defined as "'],
+            "append_to_prefix": [
+                ' The word{new_word} in the above sentence(s) is defined as "',
+                ' What is the definition of{new_word}?',
+            ][-1:],
             "pretrained_model": [
                 *(f"EleutherAI/pythia-{model_size}" for model_size in ['70m', '160m', '410m']),
                 "gpt2",
                 llama_path+r"/Meta-Llama-3-8B",
                 llama_path+r"/Meta-Llama-3-8B-Instruct",
-            ][-2:],
+                'ltg/flan-t5-definition-en-base',
+                'ltg/flan-t5-definition-en-large',
+                'ltg/flan-t5-definition-en-xl',
+            ][-5:],
             #"revision": [f"step{step}" for step in [0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512] + list(range(1000, 143001, 1000)) if step <= 4000],
-            "n_examples": [2, 3, 4, 5, 10][:3],
-            "eval_n_classes": [(4, 8)],
-            "print_decoded_prefix": [True],
+            "n_examples": [2, 3, 4, 5, 10][:1],
+            "eval_n_classes": [(4, 8), ()][-1:],
+            "print_decoded_prefix": [False],
             "new_word": [new_word],
+            #"no_new_token": [True],
             "prompt": [
                 "",
                 f"The following lines are lowercased example sentences using a new word '{new_word.strip()}', one per line:",
             ][:1],
-            "sep": [" *"],
+            "sep": [" *", ""][-1:],
             "max_new_tokens": [100],
+            "num_beams": [1, 5][:1],
         }
         for new_word in ["", " dax", " wug"][-1:]
     ],
@@ -94,18 +102,18 @@ grids = {
     "Llama_finetuned": [
         {
             "main_file": ["evaluation.py"],
-            "data_dir": [c["data_dir"], r"chimeras.json", r"def_task.json"][-1:],
+            "data_dir": [c["data_dir"], r"chimeras.json", r"def_task.json", r"oxford.json"][-1:],
             #"split": ["test"],
             #"data_order": ["original"],
-            "append_to_prefix": [f' The word<|reserved_special_token_0|> in the above sentence(s) is defined as "'],
+            "append_to_prefix": [' The word{new_word} in the above sentence(s) is defined as "'],
             "pretrained_model": [
-                f"ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best"
+                f"ckpt/meta-word_pretrained_model_{pretrained_model.replace('/', ':')}_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean{'' if prompt is None else '_prompt_'+prompt}_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best"
                 for seed in [0, 1, 2]
             ],
-            "tokenizer": [llama_path+r"/Meta-Llama-3-8B"],
-            "n_examples": [2, 3, 4, c["n_examples"]][:3],
-            "eval_n_classes": [tuple(range(2, 11))],
-            "print_decoded_prefix": [True],
+            "tokenizer": [pretrained_model],
+            "n_examples": [2, 3, 4, c["n_examples"]][:1],
+            "eval_n_classes": [tuple(range(2, 11)), ()][:1],
+            "print_decoded_prefix": [False],
             "new_word": ["<|reserved_special_token_0|>"],
             "prompt": [
                 "",
@@ -113,7 +121,12 @@ grids = {
             ][0:1],
             "sep": ["<|reserved_special_token_1|>"],
             "max_new_tokens": [100],
+            "num_beams": [1, 5][:1],
         }
+        for pretrained_model, prompt in [
+            (llama_path+r"/Meta-Llama-3-8B", None),
+            (llama_path+r"/Meta-Llama-3-8B-Instruct", ""),
+        ]
         for c in [
             {
                 "data_dir": "word_use_data/childes/word",
@@ -148,6 +161,7 @@ flags = [
     #"revision",
     #"prompt",
     #"new_word",
+    #"no_new_token",
     "n_examples",
     "max_new_tokens",
 ]
