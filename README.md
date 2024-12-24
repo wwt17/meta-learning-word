@@ -109,7 +109,15 @@ python runner.py --job_name_base meta-word --config runner_config/finetune_confi
 
 ## Evaluation
 
-Run `evaluation.py`. You can use `runner.py` to create and submit Slurm jobs:
+Run `evaluation.py`. On a dataset (given by `--data_dir`), it first evaluates the classification accuracies (the number(s) of classes are given by `--eval_n_classes`), then for each word in the dataset it generate the next example (or definition) by greedy decoding, top-p sampling, and beam search. You can use `runner.py` to create and submit Slurm jobs:
 ```bash
 python runner.py --job_name_base meta-word-eval --config runner_config/evaluation_config.py --submit
 ```
+The standard output will consist of classification accuracies and examples along with the generations. It should be saved (in a slurm output file, for examples) for further evaluations below.
+
+### Evaluate generations (definitions) with ground-truths
+Run `evaluate_generation.py` on the output file(s) from `evaluation.py`. You may also read `evaluate_generation_runner.py` for how to run `evaluate_generation.py` in different settings, and modify/run it for your evaluations.
+
+
+### Compare generations (definitions)
+Run `compare_generation.py` on the two output files from `evaluation.py`.
