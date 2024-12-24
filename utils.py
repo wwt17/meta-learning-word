@@ -49,13 +49,13 @@ def batchify(examples, batch_size=2, drop_last=True):
         yield batch
 
 
-def map_structure(func, *structure):
-    if isinstance(structure[0], torch.Tensor):
+def map_structure(func, *structure, classinfo: Any = torch.Tensor):
+    if isinstance(structure[0], classinfo):
         return func(*structure)
     elif isinstance(structure[0], Sequence):
-        return type(structure[0])(map_structure(func, *substructure) for substructure in zip(*structure))
+        return type(structure[0])(map_structure(func, *substructure, classinfo=classinfo) for substructure in zip(*structure))
     elif isinstance(structure[0], Mapping):
-        return type(structure[0])({key: map_structure(func, *(struct[key] for struct in structure)) for key in structure[0].keys()})
+        return type(structure[0])({key: map_structure(func, *(struct[key] for struct in structure), classinfo=classinfo) for key in structure[0].keys()})
     else:
         raise ValueError(f"Unknown structure {structure}")
 
