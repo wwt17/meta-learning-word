@@ -71,8 +71,8 @@ if __name__ == "__main__":
             setattr(args, argname, getattr(args, argname) * len(args.files))
         assert len(getattr(args, argname)) == len(args.files), f"Must provide same number of elements in {argname} ({len(getattr(args, argname))}) as files ({len(args.files)}), or only one"
 
-    rouge = evaluate.load("rouge")
-    bertscore = evaluate.load("bertscore")
+    rouge = evaluate.load("rouge", keep_in_memory=True)
+    bertscore = evaluate.load("bertscore", keep_in_memory=True)
     nlp = spacy.load('en_core_web_sm')
 
     for file, word, replace_word, _sep in zip(args.files, args.word, args.replace_word, args.sep):
