@@ -11,6 +11,7 @@ import inflect
 import re
 import json
 import datasets
+import pyinflect
 
 
 def frac_repr(a, b, prec=2):
@@ -265,7 +266,15 @@ def find_highest_overlap(target_word, sentences):
     results = []
     for sentence in sentences:
         words = tokenize(sentence)
-        overlaps = [(word, longest_common_substring(target_word, word.replace("-", ""))) for word in words]
+        overlaps = [
+            (word,
+             max(
+                longest_common_substring(target_word, word),
+                longest_common_substring(target_word, word.replace("-", ""))
+             )
+            )
+            for word in words
+        ]
         overlap_ratios = [(x[0], x[1] / len(target_word), x[1] / len(x[0])) for x in overlaps]
         selected_words = [x[0] for x in overlap_ratios if x[1] > 0.75 and len(x[0]) >= len(target_word) and len(x[0]) < 2*len(target_word)]
         for w in selected_words:
@@ -289,10 +298,13 @@ def longest_common_substring(s1, s2):
     return len(s1[x_longest - longest: x_longest])
 
 
-def get_word_forms(target, context):
+def get_word_forms(target, context, get_all_inflections=True):
     target_word = target
     sentences = [context]
     results = find_highest_overlap(target_word, sentences)
+    if get_all_inflections:
+        inflections = pyinflect.getAllInflections(target)
+        results.extend(itertools.chain.from_iterable(inflections.values()))
     return results
 
 
