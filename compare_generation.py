@@ -74,7 +74,9 @@ def compare(
             )
             answer: str = completion.choices[0].message.content  # type: ignore
             print(f"{judge} returns:", answer)
-            answer = answer.strip()[:1].upper()
+            while not answer[0].isalpha():
+                answer = answer[1:]
+            answer = answer[0].upper()
         elif isinstance(judge, str):
             # human
             answer = None  # type: ignore
