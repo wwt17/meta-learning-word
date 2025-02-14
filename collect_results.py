@@ -115,7 +115,7 @@ finetuned = [
     f"ckpt/meta-word{pretrained_model_option}_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best/{eval_name}/slurm.out"
     for seed in [0, 1, 2]
 ]
-method_name = "MINNOW"
+method_name = "Minnow"
 model_filenames = {
     f"{method_name} from scratch on CHILDES": trained_from_scratch_on_childes,
     f"{method_name} from scratch on BabyLM-10M": trained_from_scratch_on_babylm_10m,
