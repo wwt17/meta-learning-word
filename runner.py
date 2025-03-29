@@ -144,7 +144,7 @@ for job in jobs:
     # specify job command and create slurm file
     jobcommand = f"{args.program} {job['main_file']}{flagstring}"
 
-    job_start_command = f"sbatch {slurm_script_path}"
+    job_start_command = f"sbatch '{slurm_script_path}'"
 
     print(jobcommand)
     with slurm_script_path.open('w') as slurmfile:
@@ -161,9 +161,9 @@ srun {jobcommand}
 """
         slurmfile.write(header +
 f"""
-#SBATCH --job-name={job_name}
-#SBATCH --output={slurm_log_dir / 'slurm.out'}
-#SBATCH --error={slurm_log_dir / 'slurm.err'}
+#SBATCH --job-name='{job_name}'
+#SBATCH --output='{slurm_log_dir / 'slurm.out'}'
+#SBATCH --error='{slurm_log_dir / 'slurm.err'}'
 """ + wrapped_command)
 
     try:
