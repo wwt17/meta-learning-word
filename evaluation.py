@@ -12,10 +12,11 @@ from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
 import datasets
 import transformers
-from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM, set_seed
-from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples,  is_definition_dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModelForMaskedLM, set_seed
+from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples,  is_definition_dataset, is_single_token_in_vocab
 from in_context_format import InContextFormat, add_format_arguments
 from evaluation_cls import cls_collate_fn, evaluate_cls, evaluate_cls_with_fixed_words
+from emb_gen import EmbeddingGenerator, EmbGener
 from utils import frac_repr, merge_input_output_dict
 
 
@@ -259,6 +260,7 @@ def evaluate_syntactic_category_classification(
         word: str = "[MASK]",
         batch_size: int = 8,
         drop_last: bool = False,
+        emb_gener: Optional[EmbGener] = None,
 ):
     """Evaluate model on Kim and Smolensky (2021)'s dataset.
     """
@@ -299,6 +301,7 @@ def evaluate_syntactic_category_classification(
                         label,
                         batch_size,
                         drop_last=drop_last,
+                        emb_gener=emb_gener,
                     )
                 print(f"{name}_acc={frac_repr(*acc, prec=1)}")
                 results[name] = acc
@@ -364,6 +367,19 @@ if __name__ == "__main__":
         "--split", nargs="+", choices=["train", "val", "dev", "test"],
         default=["val"],
         help="Which split(s) to use."
+    )
+    argparser.add_argument(
+        "--emb_gen_model_type", choices=["college"],
+        help="If set, use the designated embedding generation model type. "
+             "For college, the pretrained_model must be Llama-2-7b."
+    )
+    argparser.add_argument(
+        "--emb_gen_model_path", type=Path,
+        default=Path("college_pretrained_model/checkpoint_7_28000"),
+    )
+    argparser.add_argument(
+        "--emb_gen_mlm",
+        default="roberta-large",
     )
     argparser.add_argument(
         "--pretrained_model",
@@ -473,12 +489,64 @@ if __name__ == "__main__":
             break
     else:
         raise exception  # type: ignore
-    in_context_format = set_and_get_format(
-        tokenizer,
-        args,
-        sep_prefix = "" if model_type == "seq2seq" else "\n",
-        set_pad_to_eos = model_type != "seq2seq",
-    )
+
+    if args.emb_gen_model_type is None:
+        emb_gener = None
+        in_context_format = set_and_get_format(
+            tokenizer,
+            args,
+            sep_prefix = "" if model_type == "seq2seq" else "\n",
+            set_pad_to_eos = model_type != "seq2seq",
+        )
+
+    elif args.emb_gen_model_type == "college":
+        assert model_type == "causal"  # model should be Llama-2-7b
+        assert not args.no_new_token, "Must have a new token for generated embedding"
+        assert is_single_token_in_vocab(tokenizer, args.new_word), "new_word must be a single token for generated embedding"
+        new_word_token_id: int = tokenizer(args.new_word, add_special_tokens=False)['input_ids'][0]  # type: ignore
+
+        emb_gen_mlm_tokenizer = AutoTokenizer.from_pretrained(
+            args.emb_gen_model_path/"tokenizerMLM",
+        )
+        emb_gen_mlm = AutoModelForMaskedLM.from_pretrained(
+            args.emb_gen_mlm,
+            device_map=device,
+        )
+        emb_gen_model = EmbeddingGenerator(
+            emb_gen_mlm.config.hidden_size,
+            emb_gen_mlm.config.num_attention_heads,
+            model.config.hidden_size,
+            num_layers=1,
+        ).to(device)
+        emb_gen_model.load_state_dict(
+            torch.load(
+                args.emb_gen_model_path/"pytorch_model.bin",
+                map_location=device,
+            )
+        )
+        emb_gen_mlm.eval()
+        emb_gen_model.eval()
+        emb_gener = EmbGener(
+            emb_gen_mlm_tokenizer,
+            emb_gen_mlm,
+            emb_gen_model,
+            new_word_token_id,
+        )
+
+        t = args.new_word
+        sep = "\n" + args.sep  # TODO: do not end suffix with sep and use the model eos as the eos
+        tokenizer.pad_token = tokenizer.eos_token
+        in_context_format = InContextFormat(
+            t = t,
+            sep = sep,
+            prompt = args.prompt,
+            t_study = emb_gen_mlm_tokenizer.mask_token,
+            no_study_in_prefix = True,  # can try False later
+        )
+
+    else:
+        raise ValueError(f"Unknown emb_gen_model_type {args.emb_gen_model_type}")
+
     if n_added_tokens:
         print("Warning: may use untrained token embeddings")
         model.resize_token_embeddings(len(tokenizer))
@@ -507,6 +575,7 @@ if __name__ == "__main__":
                     meta_dataset_kwargs,
                     split=split,
                     batch_size=args.batch_size,
+                    emb_gener=emb_gener,
                 )
             continue
         # classification

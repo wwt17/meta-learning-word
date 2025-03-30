@@ -342,6 +342,21 @@ def get_embedding_params(model: transformers.PreTrainedModel):
     )
 
 
+def set_token_embeddings(
+        model: transformers.PreTrainedModel,
+        token_ids,
+        embs_: tuple[torch.Tensor, torch.Tensor],
+):
+    for embeddings, emb in zip(
+        [
+            model.get_input_embeddings(),
+            model.get_output_embeddings(),
+        ],
+        embs_
+    ):
+        embeddings.weight[token_ids] = emb
+
+
 def initialize_new_token_embeddings(
         model: transformers.PreTrainedModel,
         new_token_ids,

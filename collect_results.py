@@ -109,7 +109,15 @@ init_name = 'Llama-3 8B'
 pretrained_model = pretrained_models[init_name]
 pretrained_model_option = f"_pretrained_model_{pretrained_model.replace('/', ':')}"
 baseline = [
-    f"ckpt/{eval_name}{pretrained_model_option}_prompt_/slurm.out"
+    f"ckpt/{eval_name}_pretrained_model_Meta-Llama-3-8B-hf_prompt__new_word_{new_word}/slurm.out"
+    for new_word in [" dax", " wug", " blicket"]
+]
+baseline_2 = [
+    f"ckpt/{eval_name}_pretrained_model_Llama-2-7b-hf_prompt__new_word_{new_word}/slurm.out"
+    for new_word in [" dax", " wug", " blicket"]
+]
+college = [
+    f"ckpt/{eval_name}_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college/slurm.out"
 ]
 finetuned = [
     f"ckpt/meta-word{pretrained_model_option}_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best/{eval_name}/slurm.out"
@@ -121,6 +129,8 @@ model_filenames = {
     f"{method_name} from scratch on BabyLM-10M": trained_from_scratch_on_babylm_10m,
     f"{init_name} baseline": baseline,
     f"{init_name} +{method_name} on BabyLM-10M": finetuned,
+    f"Llama-2 7B baseline": baseline_2,
+    f"CoLLEGe": college,
 }
 
 

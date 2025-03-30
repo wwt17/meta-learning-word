@@ -1,4 +1,4 @@
-from typing import Any, Iterable, TypeVar
+from typing import Any, Iterable, TypeVar, Optional
 from collections.abc import Sequence, Mapping, Sized, Callable
 from collections import Counter, defaultdict
 import argparse
@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, PreTrainedTokenizerFast, AutoModelForCausalLM, AutoConfig, set_seed
 from text_configs import NEW_TOKEN, SEP_TOKEN
 from in_context_format import InContextFormat
-from utils import map_structure, to, get_device, batchify
+from emb_gen import EmbGener
+from utils import map_structure, to, get_device, batchify, set_token_embeddings
 
 
 def cls_collate_fn(tokenizer, batch):
@@ -36,6 +37,22 @@ def get_prefix_output(
     return prefix_output
 
 
+def get_embs_(
+        study_input_,
+        emb_gener: EmbGener,
+):
+    mlm_out = emb_gener.mlm(
+        input_ids=study_input_["input_ids"],
+        attention_mask=study_input_["attention_mask"],
+        output_hidden_states=True,
+    )
+    embs_ = emb_gener.model(
+        mlm_out.hidden_states[-1],
+        study_input_["attention_mask"],
+    )
+    return embs_
+
+
 def get_suffix_loss(
         prefix_input,
         prefix_output,
@@ -43,16 +60,38 @@ def get_suffix_loss(
         suffix_input,
         model: PreTrainedModel,
         loss_fct: Callable,
+        emb_gener: Optional[EmbGener] = None,
+        study_input: Optional[list] = None,
+        embs: Optional[list] = None,
 ):
     n_suffix = suffix_input["input_ids"].size(0)
     prefix_length = prefix_input["attention_mask"][i_prefix].sum()
+    if emb_gener is not None:
+        assert study_input is not None
+        study_input_ = study_input[i_prefix]
+        if embs is None:
+            embs_ = get_embs_(study_input_, emb_gener)
+        else:
+            embs_ = embs[i_prefix]
+        set_token_embeddings(model, [emb_gener.token_id], embs_)
+    if prefix_output is None:
+        prefix_input_ = map_structure(
+            lambda t: t[i_prefix:i_prefix+1, ..., :prefix_length],
+            prefix_input
+        )
+        prefix_output_ = get_prefix_output(prefix_input_, model)
+        i_prefix_ = 0
+    else:
+        prefix_input_ = prefix_input
+        prefix_output_ = prefix_output
+        i_prefix_ = i_prefix
     prefix_past_key_values = map_structure(
-        lambda t: t[i_prefix, ..., :prefix_length, :].expand(n_suffix, *((t.dim()-1)*[-1])),
-        prefix_output.past_key_values
+        lambda t: t[i_prefix_, ..., :prefix_length, :].expand(n_suffix, *((t.dim()-1)*[-1])),
+        prefix_output_.past_key_values
     )
     attention_mask = torch.concat(
         [
-            prefix_input["attention_mask"][i_prefix, :prefix_length].expand(n_suffix, -1),
+            prefix_input_["attention_mask"][i_prefix_, :prefix_length].expand(n_suffix, -1),
             suffix_input["attention_mask"]
         ],
         dim=1
@@ -61,7 +100,7 @@ def get_suffix_loss(
     suffix_loss = loss_fct(
         torch.concat(
             [
-                prefix_output.logits[i_prefix, prefix_length-1:prefix_length, :].expand(n_suffix, -1, -1),
+                prefix_output_.logits[i_prefix_, prefix_length-1:prefix_length, :].expand(n_suffix, -1, -1),
                 suffix_output.logits[..., :-1, :]
             ],
             dim=-2
@@ -77,13 +116,27 @@ def get_suffix_losses(
         model: PreTrainedModel,
         loss_fct: Callable,
         prefix_output=None,
+        emb_gener: Optional[EmbGener] = None,
+        study_input: Optional[list] = None,
+        embs: Optional[list] = None,
 ):
     n_prefix = prefix_input["input_ids"].size(0)
     suffix_losses = []
-    if prefix_output is None:
-        prefix_output = get_prefix_output(prefix_input, model)
+    if emb_gener is None:
+        if prefix_output is None:
+            prefix_output = get_prefix_output(prefix_input, model)
     for i_prefix in range(n_prefix):
-        suffix_loss = get_suffix_loss(prefix_input, prefix_output, i_prefix, suffix_input, model, loss_fct)
+        suffix_loss = get_suffix_loss(
+            prefix_input,
+            prefix_output,
+            i_prefix,
+            suffix_input,
+            model,
+            loss_fct,
+            emb_gener=emb_gener,
+            study_input=study_input,
+            embs=embs,
+        )
         suffix_losses.append(suffix_loss)
     suffix_losses = torch.stack(suffix_losses, dim=0)
     return suffix_losses
@@ -95,8 +148,20 @@ def get_nll_matrix(
         model: PreTrainedModel,
         loss_fct: Callable,
         prefix_output=None,
+        emb_gener: Optional[EmbGener] = None,
+        study_input: Optional[list] = None,
+        embs: Optional[list] = None,
 ):
-    suffix_losses = get_suffix_losses(prefix_input, suffix_input, model, loss_fct, prefix_output=prefix_output)
+    suffix_losses = get_suffix_losses(
+        prefix_input,
+        suffix_input,
+        model,
+        loss_fct,
+        prefix_output=prefix_output,
+        emb_gener=emb_gener,
+        study_input=study_input,
+        embs=embs,
+    )
     nll_matrix = suffix_losses.sum(-1)
     return nll_matrix
 
@@ -140,6 +205,8 @@ def evaluate_cls_with_fixed_prefixes(
         suffix_input_batches,
         loss_fct: Callable,
         label: int,
+        emb_gener: Optional[EmbGener] = None,
+        study_input: Optional[list] = None,
 ) -> tuple[int, int]:
     """Evaluate classification with a fixed set of in-context-learned words.
     Args:
@@ -155,13 +222,36 @@ def evaluate_cls_with_fixed_prefixes(
     """
     device = get_device(model)
     prefix_input = to(prefix_input, device)
-    prefix_output = get_prefix_output(prefix_input, model)
+    if study_input is not None:
+        study_input = to(study_input, device)
+    embs = None
+    prefix_output = None
+    if emb_gener is None:
+        prefix_output = get_prefix_output(prefix_input, model)
+    else:
+        assert study_input is not None
+        if False:
+            embs = []
+            with torch.no_grad():
+                for i, study_input_ in enumerate(study_input):
+                    embs_ = get_embs_(study_input_, emb_gener)
+                    embs.append(embs_)
+                    prefix_output = None  # TODO: get prefix output
     n_acc, n = 0, 0
     with torch.no_grad():
         for suffix_input in suffix_input_batches:
             suffix_input = to(suffix_input, device)
             batch_size = suffix_input["input_ids"].size(0)
-            nll_matrix = get_nll_matrix(prefix_input, suffix_input, model, loss_fct, prefix_output=prefix_output)
+            nll_matrix = get_nll_matrix(
+                prefix_input,
+                suffix_input,
+                model,
+                loss_fct,
+                prefix_output=prefix_output,
+                emb_gener=emb_gener,
+                study_input=study_input,
+                embs=embs,
+            )
             pred_cls = nll_matrix.argmin(dim=0)
             acc = pred_cls == label
             batch_n_acc: int = acc.sum().item()  # type: ignore
@@ -181,6 +271,7 @@ def evaluate_cls_with_fixed_words(
         label: int,
         batch_size: int,
         drop_last: bool = False,
+        emb_gener: Optional[EmbGener] = None,
 ) -> tuple[int, int]:
     """Evaluate classification with a fixed set of in-context-learned words.
     Args:
@@ -196,22 +287,44 @@ def evaluate_cls_with_fixed_words(
     Return:
         Accuracy in the fractional form (n_acc, n)
     """
-    prefixes = [
-        in_context_format.construct_meta_cls_example(word_item, last_n=0)["prefix"]
-        for word_item in word_items
-    ]
+    prefixes, studies = [], None
+    for word_item in word_items:
+        word_item_data = in_context_format.construct_meta_cls_example(word_item, last_n=0)
+        prefixes.append(word_item_data["prefix"])
+        if "study" in word_item_data:
+            if studies is None:
+                studies = []
+            studies.append(word_item_data["study"])
     prefix_input = tokenizer(
         prefixes,
         padding="longest",
         return_tensors="pt",
     )
+    if emb_gener is None:
+        study_input = None
+    else:
+        assert studies is not None
+        study_input = [
+            emb_gener.mlm_tokenizer(
+                study,
+                truncation=True,
+                padding='longest',
+                return_tensors='pt',
+            )
+            for study in studies
+        ]
     suffixes = map(
         partial(in_context_format.concat_examples, start_with_sep=False),
         test_examples
     )
     suffix_batches = batchify(suffixes, batch_size=batch_size, drop_last=drop_last)
     suffix_input_batches = map(
-        partial(tokenizer, padding="longest", return_tensors="pt"),
+        partial(
+            tokenizer,
+            add_special_tokens=False,
+            padding="longest",
+            return_tensors="pt",
+        ),
         suffix_batches
     )
     return evaluate_cls_with_fixed_prefixes(
@@ -220,6 +333,8 @@ def evaluate_cls_with_fixed_words(
         suffix_input_batches,
         loss_fct,
         label,
+        emb_gener=emb_gener,
+        study_input=study_input,
     )
 
 

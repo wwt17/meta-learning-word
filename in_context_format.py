@@ -61,6 +61,8 @@ class InContextFormat:
             sep_formatter: Optional[Callable[[int], str]] = None,
             start_with_sep: bool = True,
             prompt: str = "",
+            t_study: Optional[str] = None,
+            no_study_in_prefix: bool = False,
     ):
         """Format of an In-Context Learning episode.
             The format is:
@@ -74,12 +76,16 @@ class InContextFormat:
             sep: The separator between examples.
             start_with_sep: whether to have sep before examples.
             prompt: the prompt (instruction) before all examples.
+            t_study: The new word for study examples for embedding generation model.
+            study_in_prefix: Not to include study examples in the prefix. Default to False, but should set to True for embedding generation model.
         """
         self.t = t
         self.sep = sep
         self.sep_formatter = sep_formatter
         self.start_with_sep = start_with_sep
         self.prompt = prompt
+        self.t_study = t_study
+        self.no_study_in_prefix = no_study_in_prefix
 
     def concat_strs(
             self,
@@ -144,6 +150,9 @@ class InContextFormat:
             (examples[:-last_n], examples[-last_n:])
         )
         prefix, suffix = self(prefix_examples, suffix_examples)
+        if self.no_study_in_prefix:
+            prefix = ""
+        study = [example_str(example, t=self.t_study) for example in prefix_examples]
         if self.t is None:
             word = item["word"]
             # extract the word form from word sense in the ishiwatari dataset
@@ -154,4 +163,4 @@ class InContextFormat:
         else:
             new_word = self.t
         prefix += append_to_prefix.format(new_word=new_word)
-        return {"prefix": prefix, "suffix": suffix}
+        return {"prefix": prefix, "suffix": suffix, "study": study}

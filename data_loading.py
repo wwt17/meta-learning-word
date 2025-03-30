@@ -377,7 +377,7 @@ def load_data_tokenizer(
 
 
 def is_single_token_in_vocab(tokenizer, s):
-    token_ids = tokenizer(s)['input_ids']
+    token_ids = tokenizer(s, add_special_tokens=False)['input_ids']
     return len(token_ids) == 1 and token_ids[0] != tokenizer.unk_token_id
 
 
@@ -426,7 +426,7 @@ def load_tokenizer(
     print(f"tokenizer size: {len(tokenizer)}", file=info_file)
     if new_tokens is not None:
         _new_tokens = list(filter(lambda token: not is_single_token_in_vocab(tokenizer, token), new_tokens))
-        n_added_tokens = tokenizer.add_tokens(_new_tokens)
+        n_added_tokens = tokenizer.add_tokens(_new_tokens, special_tokens=True)
         print(f"added {n_added_tokens} tokens in {new_tokens}", file=info_file)
         print(f"tokenizer size: {len(tokenizer)}", file=info_file)
     else:
