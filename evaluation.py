@@ -15,9 +15,9 @@ import transformers
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModelForMaskedLM, set_seed
 from data_loading import load_meta_datasets, read_meta_episodes, read_and_preprocess_examples, load_tokenizer, is_data_tokenizer, set_and_get_format, sample_examples,  is_definition_dataset, is_single_token_in_vocab
 from in_context_format import InContextFormat, add_format_arguments
-from evaluation_cls import cls_collate_fn, evaluate_cls, evaluate_cls_with_fixed_words
+from evaluation_cls import cls_collate_fn, evaluate_cls, evaluate_cls_with_fixed_words, get_embs_
 from emb_gen import EmbeddingGenerator, EmbGener
-from utils import frac_repr, merge_input_output_dict
+from utils import frac_repr, merge_input_output_dict, set_token_embeddings
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,117 +67,132 @@ def evaluate_gen(
         skip_eos_token: bool = False,
         skip_stop_string: Optional[str] = None,
         interactive: bool = False,
+        emb_gener: Optional[EmbGener] = None,
 ):
-    for i, item in enumerate(dataset):
-        print(f"Example #{i}:")
-        print(f"ground-truth word:", item["word"]) # type: ignore
-        print(f"ground-truth prefix:", item["prefix"]) # type: ignore
-        prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
-        if print_decoded_prefix:
-            print(f"     decoded prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
-        print(f"ground-truth suffix:", item["suffix"]) # type: ignore
-        full_str = item["prefix"] + item["suffix"] # type: ignore
-        full_input = tokenizer(full_str, return_tensors='pt').to(device)
+    with torch.no_grad():
+        for i, item in enumerate(dataset):
+            print(f"Example #{i}:")
+            print(f"ground-truth word:", item["word"]) # type: ignore
+            if "study" in item:
+                print(f"study examples:")
+                for study_ in item["study"]:
+                    print(study_)
+                if emb_gener is not None:
+                    study_input = emb_gener.mlm_tokenizer(
+                        item["study"],
+                        truncation=True,
+                        padding='longest',
+                        return_tensors='pt',
+                    ).to(device)
+                    embs = get_embs_(study_input, emb_gener)
+                    set_token_embeddings(model, [emb_gener.token_id], embs)
+            print(f"ground-truth prefix:", item["prefix"]) # type: ignore
+            prefix_input = tokenizer(item["prefix"], return_tensors='pt').to(device) # type: ignore
+            if print_decoded_prefix:
+                print(f"     decoded prefix:", tokenizer.decode(prefix_input.input_ids[0], skip_special_tokens=False, clean_up_tokenization_spaces=False))
+            print(f"ground-truth suffix:", item["suffix"]) # type: ignore
+            full_str = item["prefix"] + item["suffix"] # type: ignore
+            full_input = tokenizer(full_str, return_tensors='pt').to(device)
 
-        def _print_outputs(
-                outputs,
-                skip_eos_token: bool = skip_eos_token,
-                skip_stop_string: Optional[str] = skip_stop_string,
-                skip_special_tokens: bool = False,  # TODO: skip other special tokens but retain the new word
-                clean_up_tokenization_spaces: bool = False,
-                print_top_k_pred: int = print_top_k_pred,
-                **kwargs
-        ):
-            assert isinstance(outputs, transformers.utils.ModelOutput), "must set return_dict_in_generate=True"
-            for j, sequence in enumerate(outputs.sequences):  # type: ignore
-                sequence_length = len(sequence)
-                while sequence_length > 0 and sequence[sequence_length - 1].item() == tokenizer.pad_token_id:
-                    sequence_length -= 1
-                if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == generation_config.eos_token_id:
-                    sequence_length -= 1
-                if model_type == "causal":
-                    start_idx = len(prefix_input.input_ids[0])
-                elif model_type == "seq2seq":
-                    start_idx = 0
-                    # strip starting pad tokens (for T5 models)
-                    while start_idx < sequence_length and sequence[start_idx].item() == tokenizer.pad_token_id:
-                        start_idx += 1
-                else:
-                    raise ValueError(f"Unknown language model type {model_type}")
-                output_string = tokenizer.decode(
-                    sequence[start_idx:sequence_length],
-                    skip_special_tokens=skip_special_tokens,
-                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+            def _print_outputs(
+                    outputs,
+                    skip_eos_token: bool = skip_eos_token,
+                    skip_stop_string: Optional[str] = skip_stop_string,
+                    skip_special_tokens: bool = False,  # TODO: skip other special tokens but retain the new word
+                    clean_up_tokenization_spaces: bool = False,
+                    print_top_k_pred: int = print_top_k_pred,
                     **kwargs
+            ):
+                assert isinstance(outputs, transformers.utils.ModelOutput), "must set return_dict_in_generate=True"
+                for j, sequence in enumerate(outputs.sequences):  # type: ignore
+                    sequence_length = len(sequence)
+                    while sequence_length > 0 and sequence[sequence_length - 1].item() == tokenizer.pad_token_id:
+                        sequence_length -= 1
+                    if skip_eos_token and sequence_length > 0 and sequence[sequence_length - 1].item() == generation_config.eos_token_id:
+                        sequence_length -= 1
+                    if model_type == "causal":
+                        start_idx = len(prefix_input.input_ids[0])
+                    elif model_type == "seq2seq":
+                        start_idx = 0
+                        # strip starting pad tokens (for T5 models)
+                        while start_idx < sequence_length and sequence[start_idx].item() == tokenizer.pad_token_id:
+                            start_idx += 1
+                    else:
+                        raise ValueError(f"Unknown language model type {model_type}")
+                    output_string = tokenizer.decode(
+                        sequence[start_idx:sequence_length],
+                        skip_special_tokens=skip_special_tokens,
+                        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                        **kwargs
+                    )
+                    if skip_stop_string:  # type: ignore
+                        stop_string_index = output_string.rfind(skip_stop_string)  # type: ignore
+                        if stop_string_index >= 0:
+                            output_string = output_string[:stop_string_index]
+                    print(f"cont. {j}:", output_string)
+                    if print_top_k_pred:
+                        assert outputs.scores is not None, "must set output_scores=True"  # type: ignore
+                        print_top_k_preds(
+                            (scores_step[j] for scores_step in outputs.scores),  # type: ignore
+                            print_top_k_pred,
+                            tokenizer
+                        )
+
+
+            if print_gt_full:
+                print("ground-truth   full:", full_str)
+                assert model_type == "causal", f"Only support ground-truth full sequence for causal LMs, but have a {model_type} LM"
+                gt_outputs = model(
+                    **full_input,
+                    return_dict=True,
                 )
-                if skip_stop_string:  # type: ignore
-                    stop_string_index = output_string.rfind(skip_stop_string)  # type: ignore
-                    if stop_string_index >= 0:
-                        output_string = output_string[:stop_string_index]
-                print(f"cont. {j}:", output_string)
                 if print_top_k_pred:
-                    assert outputs.scores is not None, "must set output_scores=True"  # type: ignore
                     print_top_k_preds(
-                        (scores_step[j] for scores_step in outputs.scores),  # type: ignore
+                        gt_outputs.logits[0],
                         print_top_k_pred,
                         tokenizer
                     )
 
-
-        if print_gt_full:
-            print("ground-truth   full:", full_str)
-            assert model_type == "causal", f"Only support ground-truth full sequence for causal LMs, but have a {model_type} LM"
-            gt_outputs = model(
-                **full_input,
-                return_dict=True,
+            print("greedy outputs:")
+            greedy_outputs = model.generate(
+                **prefix_input,
+                generation_config=generation_config,
+                stopping_criteria=stopping_criteria,
             )
-            if print_top_k_pred:
-                print_top_k_preds(
-                    gt_outputs.logits[0],
-                    print_top_k_pred,
-                    tokenizer
+            _print_outputs(greedy_outputs)
+
+            if top_p:
+                print(f"sample with top-p={top_p:.2f} outputs:")
+                sample_outputs = model.generate(
+                    **prefix_input,
+                    generation_config=generation_config,
+                    stopping_criteria=stopping_criteria,
+                    do_sample=True,
+                    top_k=0,
+                    top_p=top_p,
+                    temperature=temperature,
+                    num_return_sequences=num_return_sequences,
                 )
+                _print_outputs(sample_outputs)
 
-        print("greedy outputs:")
-        greedy_outputs = model.generate(
-            **prefix_input,
-            generation_config=generation_config,
-            stopping_criteria=stopping_criteria,
-        )
-        _print_outputs(greedy_outputs)
+            if num_beams > 1:
+                print("beam search outputs:")
+                beam_outputs = model.generate(
+                    **prefix_input,
+                    generation_config=generation_config,
+                    stopping_criteria=stopping_criteria,
+                    num_beams=num_beams,
+                    length_penalty=length_penalty,
+                    no_repeat_ngram_size=no_repeat_ngram_size,
+                    early_stopping=early_stopping,
+                    num_return_sequences=num_return_sequences,
+                )
+                _print_outputs(beam_outputs)
 
-        if top_p:
-            print(f"sample with top-p={top_p:.2f} outputs:")
-            sample_outputs = model.generate(
-                **prefix_input,
-                generation_config=generation_config,
-                stopping_criteria=stopping_criteria,
-                do_sample=True,
-                top_k=0,
-                top_p=top_p,
-                temperature=temperature,
-                num_return_sequences=num_return_sequences,
-            )
-            _print_outputs(sample_outputs)
-
-        if num_beams > 1:
-            print("beam search outputs:")
-            beam_outputs = model.generate(
-                **prefix_input,
-                generation_config=generation_config,
-                stopping_criteria=stopping_criteria,
-                num_beams=num_beams,
-                length_penalty=length_penalty,
-                no_repeat_ngram_size=no_repeat_ngram_size,
-                early_stopping=early_stopping,
-                num_return_sequences=num_return_sequences,
-            )
-            _print_outputs(beam_outputs)
-
-        if interactive:
-            input()
-        else:
-            print()
+            if interactive:
+                input()
+            else:
+                print()
 
 
 def evaluate_classification(
@@ -187,6 +202,7 @@ def evaluate_classification(
         model: transformers.PreTrainedModel,
         raw_loss_fct: torch.nn.Module,
         eval_n_classes: list[int],
+        emb_gener: Optional[EmbGener] = None,
 ):
     # classification
     for n_classes in eval_n_classes:
@@ -195,10 +211,19 @@ def evaluate_classification(
             batch_size=n_classes,
             shuffle=False,
             drop_last=True,
-            collate_fn=partial(cls_collate_fn, tokenizer),
+            collate_fn=partial(
+                cls_collate_fn,
+                tokenizer,
+                study_tokenizer=(None if emb_gener is None else emb_gener.mlm_tokenizer)
+            ),
         )
         value_name = f"{prefix}cls_{n_classes}_acc"
-        cls_acc = evaluate_cls(model, dataloader, raw_loss_fct)
+        cls_acc = evaluate_cls(
+            model,
+            dataloader,
+            raw_loss_fct,
+            emb_gener=emb_gener,
+        )
         print(f"{value_name}={frac_repr(*cls_acc, prec=3)}")
 
 
@@ -210,6 +235,7 @@ def evaluate_generation(
         model_type: str,
         args,
         skip_eos_token: bool = False,
+        emb_gener: Optional[EmbGener] = None,
 ):
     stop_string: str = in_context_format.sep  # type: ignore
     eos_token_id: int = tokenizer(stop_string)['input_ids'][-1]
@@ -242,6 +268,7 @@ def evaluate_generation(
             skip_eos_token=skip_eos_token,
             skip_stop_string=stop_string,
             interactive=args.interactive,
+            emb_gener=emb_gener,
         )
     except EOFError:
         pass
@@ -408,6 +435,10 @@ if __name__ == "__main__":
     argparser.add_argument(
         "--append_to_prefix", default="",
         help="Append this string to the prefix. Can have a variable new_word to be substituted by the new word to be learned."
+    )
+    argparser.add_argument(
+        "--append_to_prefix_for_gen", default=None,
+        help="During generation, append this string to the prefix after previously appended string. If not set, use append_to_prefix. Same as append_to_prefix, can have a variable new_word."
     )
     argparser.add_argument(
         "--eval_n_classes", type=int, nargs="*", default=[],
@@ -595,17 +626,22 @@ if __name__ == "__main__":
                 model,
                 raw_loss_fct,
                 args.eval_n_classes,
+                emb_gener=emb_gener,
             )
         else:
             cls_dataset = None
         # generation
-        if cls_dataset is not None and args.gen_last_n == args.cls_last_n:
+        if cls_dataset is not None and args.gen_last_n == args.cls_last_n and args.append_to_prefix_for_gen is None:
             gen_dataset = cls_dataset
         else:
             fn = partial(
                 in_context_format.construct_meta_cls_example,
                 last_n=args.gen_last_n,
-                append_to_prefix=args.append_to_prefix,
+                append_to_prefix = (
+                    args.append_to_prefix
+                    if args.append_to_prefix_for_gen is None else
+                    args.append_to_prefix_for_gen
+                ),
             )
             if isinstance(dataset, datasets.Dataset):
                 gen_dataset = dataset.map(fn)
@@ -619,4 +655,5 @@ if __name__ == "__main__":
             model_type,
             args,
             skip_eos_token = model_type == "seq2seq",
+            emb_gener=emb_gener,
         )

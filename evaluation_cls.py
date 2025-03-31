@@ -15,7 +15,7 @@ from emb_gen import EmbGener
 from utils import map_structure, to, get_device, batchify, set_token_embeddings
 
 
-def cls_collate_fn(tokenizer, batch):
+def cls_collate_fn(tokenizer, batch, study_tokenizer=None):
     """Construct a classification evaluation batch."""
     batch = {
         key: type(batch)(example[key] for example in batch)
@@ -24,8 +24,23 @@ def cls_collate_fn(tokenizer, batch):
     for key in ["prefix", "suffix"]:
         batch[key] = tokenizer(
             batch[key],
-            padding="longest", return_tensors="pt"
+            add_special_tokens=(key != "suffix"),
+            padding="longest",
+            return_tensors="pt",
         )
+    if "study" in batch:
+        if study_tokenizer is None:
+            del batch["study"]
+        else:
+            batch["study"] = [
+                study_tokenizer(
+                    study_,
+                    truncation=True,
+                    padding='longest',
+                    return_tensors='pt',
+                )
+                for study_ in batch["study"]
+            ]
     return batch
 
 
@@ -170,6 +185,7 @@ def evaluate_cls(
         model: PreTrainedModel,
         dataloader: Iterable,
         loss_fct: Callable,
+        emb_gener: Optional[EmbGener] = None,
 ) -> tuple[int, int]:
     """Evaluate classification.
     Args:
@@ -184,12 +200,21 @@ def evaluate_cls(
     n_acc, n = 0, 0
     with torch.no_grad():
         for batch in dataloader:
-            for key in ["prefix", "suffix"]:
-                batch[key] = to(batch[key], device)
+            for key in ["prefix", "suffix", "study"]:
+                if key in batch:
+                    batch[key] = to(batch[key], device)
             prefix_input = batch["prefix"]
             suffix_input = batch["suffix"]
+            study_input = batch.get("study", None)
             batch_size = prefix_input["input_ids"].size(0)
-            nll_matrix = get_nll_matrix(prefix_input, suffix_input, model, loss_fct)
+            nll_matrix = get_nll_matrix(
+                prefix_input,
+                suffix_input,
+                model,
+                loss_fct,
+                emb_gener = emb_gener,
+                study_input = study_input,
+            )
             pred_cls = nll_matrix.argmin(dim=0)
             acc = pred_cls == torch.arange(batch_size, device=pred_cls.device)
             batch_n_acc: int = acc.sum().item()  # type: ignore
