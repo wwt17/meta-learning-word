@@ -1,8 +1,12 @@
 from collections.abc import Iterable
 
 
+multiline_fields = [
+    "study examples",
+]
 input_fields = [
     "ground-truth word",
+    "study examples",
     "ground-truth prefix",
     "     decoded prefix",
     "ground-truth suffix",
@@ -46,6 +50,11 @@ def parse_example_with_generations(
                     cont += value_lines.pop(0)
                 cont = cont.removesuffix("\n")
                 value.append(cont)
+        elif field in multiline_fields:
+            assert len(value_lines) >= 1
+            assert value_lines[0] == "\n"
+            value_lines.pop(0)
+            value = [value_line.removesuffix("\n") for value_line in value_lines]
         else:
             value = "".join(value_lines)
             value = value.removeprefix(" ")
