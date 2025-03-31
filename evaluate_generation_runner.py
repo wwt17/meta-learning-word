@@ -28,6 +28,7 @@ try:
 except KeyError:
     llama_path = '.'
 pretrained_models = {
+    'Llama-2-7B': r'Llama-2-7b-hf',
     'Llama-3-8B': llama_path+r'/Meta-Llama-3-8B',
     'Llama-3-8B-Instruct': llama_path+r'/Meta-Llama-3-8B-Instruct',
     'FLAN-Base-DefInstr': r'ltg/flan-t5-definition-en-base',
@@ -58,6 +59,7 @@ paths = {
         f'{name}-ori': 'ckpt/meta-word-eval_data_dir_{eval_data}_pretrained_model_{pretrained_model}_prompt__no_new_token_True_n_examples_{n_examples}_max_new_tokens_100/slurm.out'.replace('{pretrained_model}', pretrained_model.replace('/', ':'))
         for name, pretrained_model in pretrained_models.items()
     },
+    'CoLLEGe': 'ckpt/meta-word-eval_data_dir_{eval_data}_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_{n_examples}_max_new_tokens_100/slurm.out',
 }
 
 
@@ -107,16 +109,16 @@ if not args.collecting_results:
                 print(f'{path} does not exist. Skipped.')
                 continue
             wrapped_command = f"""
-    srun {jobcommand}
-    """
+srun {jobcommand}
+"""
             slurm_script_path = path.with_name("evaluate_generation.slurm")
             with slurm_script_path.open('w') as slurmfile:
                 slurmfile.write(header +
     f"""
-    #SBATCH --job-name={job_name}
-    #SBATCH --output={slurm_script_path.with_suffix('.out')}
-    #SBATCH --error={slurm_script_path.with_suffix('.err')}
-    """ + wrapped_command)
+#SBATCH --job-name={job_name}
+#SBATCH --output={slurm_script_path.with_suffix('.out')}
+#SBATCH --error={slurm_script_path.with_suffix('.err')}
+""" + wrapped_command)
 
             job_start_command = f"sbatch {slurm_script_path}"
 
