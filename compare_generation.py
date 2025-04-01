@@ -1,4 +1,5 @@
 from collections.abc import Iterable, Mapping, Sequence, Callable
+from collections import namedtuple
 import signal
 import argparse
 from pathlib import Path
@@ -138,33 +139,93 @@ def print_statistics(results, id_to_name: Mapping[int, str], judges):
                 print(frac_repr(cnt_table[x, y], tot), end=('\n' if y == -1 else ' '))
 
 
+OutFile = namedtuple("OutFile", ["path", "word", "sep"])
+named_files = {
+    "baseline on BabyLM-10M": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_5_max_new_tokens_100/slurm.out"),
+        " dax", "\n *"
+    ),
+    "finetuned on BabyLM-10M": OutFile(
+        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "llama-3-instruct baseline on BabyLM-10M": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_n_examples_5_max_new_tokens_100/slurm.out"),
+        " dax", "\n *"
+    ),
+    "llama-3-instruct finetuned on BabyLM-10M": OutFile(
+        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "college on BabyLM-10M": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<nonce>", "\n"
+    ),
+    "baseline on Chimera": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_5_longer/slurm.out"),
+        " wug", "\n *"
+    ),
+    "finetuned on Chimera": OutFile(
+        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_longer/slurm.out"),
+        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "llama-3-instruct baseline on Chimera": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_n_examples_5/slurm.out"),
+        " wug", "\n *"
+    ),
+    "llama-3-instruct finetuned on Chimera": OutFile(
+        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "college on Chimera": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<nonce>", "\n"
+    ),
+    "baseline on def_task": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
+        " wug", "\n *"
+    ),
+    "finetuned on def_task": OutFile(
+        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
+        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "llama-3-instruct baseline on def_task": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
+        " wug", "\n *"
+    ),
+    "llama-3-instruct finetuned on def_task": OutFile(
+        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
+        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "college on def_task": OutFile(
+        Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_4_max_new_tokens_100/slurm.out"),
+        "<nonce>", "\n"
+    ),
+}
+
+
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        "files", type=Path, nargs=2,
-        help="The 2 files of evaluation outputs for comparison."
-             " The first one should be from the finetuned model;"
-             " the second one should be from the original model."
+        "names", nargs=2,
+        help="Names for the 2 files for comparison."
+    )
+    argparser.add_argument(
+        "--word_example_prompt_name",
+        help="Use the ground-truth prefix from this name's file for word_example_prompt for in-context word learning."
+    )
+    argparser.add_argument(
+        "--sep_target",
+        help="The sep string in the target (prompt). Will replace sep_source with sep_target to construct the word_example_prompt."
+    )
+    argparser.add_argument(
+        "--word_target",
+        help="The word in the target (prompt). Will replace words with word_target to construct the word_eample_prompt and generations. If set to 'GT', use the ground-truth word form."
     )
     argparser.add_argument(
         "--mode", choices=list(prompt_qa_format_of_mode.keys()),
         default="example",
         help="Generation mode. Either example or definition."
-    )
-    argparser.add_argument(
-        "--use_gt_word_only", action="store_true",
-        help="Show the model only the ground-truth word form in the question,"
-             " without in-context learning examples."
-    )
-    argparser.add_argument(
-        "--word", nargs=2,
-        default=["<|reserved_special_token_0|>", " wug"],
-        help="Strings representing the new word to be learned,"
-             " in the same order of their corresponding files."
-    )
-    argparser.add_argument(
-        "--sep", default="\n *",
-        help="The sep string."
     )
     argparser.add_argument(
         "--judges", nargs="+", default=["human"],
@@ -204,20 +265,17 @@ if __name__ == "__main__":
         for judge in args.judges
     }
 
-    files = [path.open() for path in args.files]
+    if args.word_example_prompt_name is not None:
+        if args.word_example_prompt_name not in args.names:
+            args.names.append(args.word_example_prompt_name)
+    id_to_name = {i: name for i, name in enumerate(args.names)}
+    files = [named_files[name].path.open() for name in args.names]
 
     try:
         with args.result_file.open() as result_f:
             results = json.load(result_f)
     except FileNotFoundError:
         results = []
-
-    try:
-        ft_id = args.word.index("<|reserved_special_token_0|>")
-    except ValueError:
-        assert False, "Cannot find the output file of a finetuned model"
-    raw_id = 1 - ft_id
-    id_to_name = {ft_id: "finetuned model", raw_id: "pretrained model"}
 
     ordered_examples = enumerate(zip(*map(read_generations, files)))
     if args.example_order != "original":
@@ -227,24 +285,45 @@ if __name__ == "__main__":
 
     try:
         for n_example, (i_example, examples) in enumerate(ordered_examples):
+            examples = {name: example for name, example in zip(args.names, examples)}
             print(f"[{n_example}] Example #{i_example}:")
+            field_unique_values = {}
             for field in ["ground-truth word"]:
-                values = [example[field] for example in examples]
-                assert len(set(values)) == 1, f"{field} differs: {values}"
-            for file_id, (example, word) in enumerate(zip(examples, args.word)):
-                assert word in example["ground-truth prefix"], f"Cannot find word '{word}' in file {file_id}"
+                values = {name: example[field] for name, example in examples.items()}
+                unique_values = set(values.values())
+                assert len(unique_values) == 1, f"{field} differs: {values}"
+                field_unique_values[field] = unique_values
+            gt_word = list(field_unique_values['ground-truth word'])[0]
+            for name, example in examples.items():
+                word = named_files[name].word
+                assert word in example["ground-truth prefix"], f"Cannot find word '{word}' in file {name}"
 
-            gt_word = examples[0]['ground-truth word']
-            prefix = examples[raw_id]["ground-truth prefix"]
-            if args.use_gt_word_only:
-                print(f"prefix: {prefix}")
+            if args.word_target is not None:
+                if args.word_target == "GT":
+                    word = gt_word
+                else:
+                    word = args.word_target
+            if args.word_example_prompt_name is None:
+                if args.word_target is None:
+                    raise ValueError
                 word_example_prompt = ""
-                word = gt_word
             else:
-                next_example_start_index = prefix.rfind(args.sep)
+                prefix = examples[args.word_example_prompt_name]["ground-truth prefix"]
+                next_example_start_index = prefix.rfind(named_files[args.word_example_prompt_name].sep)
                 assert next_example_start_index >= 0, "Cannot find the start of the next example (sep) in the prefix:\n{prefix}"
                 word_example_prompt = prefix[ : next_example_start_index + 1]
-                word = args.word[raw_id]
+                if args.word_target is None:
+                    word = named_files[args.word_example_prompt_name].word
+                else:
+                    word_example_prompt = word_example_prompt.replace(
+                        named_files[args.word_example_prompt_name].word,
+                        word
+                    )
+                if args.sep_target is not None:
+                    word_example_prompt = word_example_prompt.replace(
+                        named_files[args.word_example_prompt_name].sep,
+                        args.sep_target
+                    )
 
             while len(results) < i_example + 1:
                 results.append({})
@@ -254,12 +333,12 @@ if __name__ == "__main__":
                 if field not in example_results:
                     example_results[field] = []
                 field_results = example_results[field]
-                values = [example[field] for example in examples]
+                values = [example[field] for example in islice(examples.values(), 2)]
                 for n_gen, gens in islice(enumerate(zip(*values)), 1):
                     gens = list(gens)
                     while len(field_results) < n_gen + 1:
                         field_results.append({})
-                    gens[ft_id] = gens[ft_id].replace(args.word[ft_id], args.word[raw_id])
+                    gens = [gen.replace(named_files[name].word, word) for name, gen in zip(args.names, gens)]
                     if args.mode == "definition":
                         gens = list(map(
                             extract_definition_from_generation,
@@ -284,7 +363,7 @@ if __name__ == "__main__":
                         if args.pause == "judgment":
                             input()
 
-            if not args.use_gt_word_only:
+            if args.word_target != "GT":
                 print(f"ground-truth word: {gt_word}")
 
             if args.save_every_n_examples > 0 and (n_example + 1) % args.save_every_n_examples == 0:
