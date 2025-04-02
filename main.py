@@ -139,6 +139,10 @@ def main(project="meta-learning-word", info_file=sys.stderr, **kwargs):
         print(f"trainable tokens: {trainable_tokens}", file=info_file)
         trainable_params = freeze_non_embedding_params(model)
 
+    # for saving Llama-2 (https://github.com/hiyouga/LLaMA-Factory/issues/2837)
+    model.generation_config.temperature = None
+    model.generation_config.top_p = None
+
     loss_fct = CrossEntropyLoss(reduction=wandb.config.loss_reduction, ignore_index=tokenizer.pad_token_id)  # type: ignore
     raw_loss_fct = CrossEntropyLoss(reduction="none", ignore_index=tokenizer.pad_token_id)  # type: ignore
     optimizer = AdamW(trainable_params, lr=wandb.config.lr, weight_decay=wandb.config.weight_decay)
