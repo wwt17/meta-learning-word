@@ -40,6 +40,7 @@ pretrained_models = {
 llama_finetuned_path_formats = {
     'Llama-3-8B-finetuned': 'ckpt/meta-word_pretrained_model_{pretrained_model}_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_{seed}_eval_step_1000/best/meta-word-eval_data_dir_{eval_data}_n_examples_{n_examples}_max_new_tokens_100/slurm.out',
     'Llama-3-8B-Instruct-finetuned': 'ckpt/meta-word_pretrained_model_{pretrained_model}_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_{seed}_eval_step_1000/best/meta-word-eval_data_dir_{eval_data}_n_examples_{n_examples}_max_new_tokens_100/slurm.out',
+    'Llama-2-7B-finetuned': 'ckpt/meta-word_pretrained_model_{pretrained_model}_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_{seed}/best/meta-word-eval_data_dir_{eval_data}_n_examples_{n_examples}_max_new_tokens_100/slurm.out',
 }
 llama_finetuned_paths = {
     name: {
@@ -51,6 +52,7 @@ llama_finetuned_paths = {
 paths = {
     **llama_finetuned_paths['Llama-3-8B-finetuned'],
     **llama_finetuned_paths['Llama-3-8B-Instruct-finetuned'],
+    **llama_finetuned_paths['Llama-2-7B-finetuned'],
     **{
         name: 'ckpt/meta-word-eval_data_dir_{eval_data}_pretrained_model_{pretrained_model}_prompt__n_examples_{n_examples}_max_new_tokens_100/slurm.out'.replace('{pretrained_model}', pretrained_model.replace('/', ':'))
         for name, pretrained_model in pretrained_models.items()

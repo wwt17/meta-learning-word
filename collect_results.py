@@ -24,6 +24,7 @@ except KeyError:
 pretrained_models = {
     'Llama-3 8B': llama_path+r'/Meta-Llama-3-8B',
     'Llama-3 8B Instruct': llama_path+r'/Meta-Llama-3-8B-Instruct',
+    'Llama-2 7B': r'Llama-2-7b-hf',
 }
 
 
@@ -70,29 +71,56 @@ def zipdicts(*ds):
     }
 
 
-c = [
-    {
-        "data_dir": "word_use_data/childes/word",
-        "n_examples": 5,
-        "batch_size": 32,
-        "lr": 3e-3,
-        "train_max_length": 80,
-    },
-    {
-        "data_dir": "word_use_data/childes/word",
-        "n_examples": 10,
-        "batch_size": 8,
-        "lr": 3e-4,
-        "train_max_length": 160,
-    },
-    {
-        "data_dir": "word_use_data/babylm_data/babylm_10M/word",
-        "n_examples": 5,
-        "batch_size": 16,
-        "lr": 1e-3,
-        "train_max_length": 160,
-    },
-][2]
+training_configs = {
+    "Llama-3 8B": [
+        {
+            "data_dir": "word_use_data/childes/word",
+            "n_examples": 5,
+            "batch_size": 32,
+            "lr": 3e-3,
+            "train_max_length": 80,
+        },
+        {
+            "data_dir": "word_use_data/childes/word",
+            "n_examples": 10,
+            "batch_size": 8,
+            "lr": 3e-4,
+            "train_max_length": 160,
+        },
+        {
+            "data_dir": "word_use_data/babylm_data/babylm_10M/word",
+            "n_examples": 5,
+            "batch_size": 16,
+            "lr": 1e-3,
+            "train_max_length": 160,
+        },
+    ],
+    "Llama-2 7B": [
+        {
+            "data_dir": "word_use_data/childes/word",
+            "n_examples": 5,
+            "batch_size": 32,
+            "lr": 1e-3,
+            "train_max_length": 80,
+        },
+        {
+            "data_dir": "word_use_data/childes/word",
+            "n_examples": 10,
+            "batch_size": 8,
+            "lr": 1e-3,
+            "train_max_length": 160,
+        },
+        {
+            "data_dir": "word_use_data/babylm_data/babylm_10M/word",
+            "n_examples": 5,
+            "batch_size": 16,
+            "lr": 3e-3,
+            "train_max_length": 160,
+        },
+    ],
+}
+init_name = 'Llama-2 7B'
+c = training_configs[init_name][2]
 eval_name = [
     f"meta-word-eval_data_dir_{c['data_dir'].replace('/', ':')}_split_test_n_examples_{c['n_examples']}_max_new_tokens_100",
     "meta-word-eval_data_dir_syntactic",
@@ -106,31 +134,41 @@ trained_from_scratch_on_babylm_10m = [
     for seed in [0, 1, 2]
 ]
 init_name = 'Llama-3 8B'
+c = training_configs[init_name][2]
 pretrained_model = pretrained_models[init_name]
 pretrained_model_option = f"_pretrained_model_{pretrained_model.replace('/', ':')}"
-baseline = [
+baseline_3 = [
     f"ckpt/{eval_name}_pretrained_model_Meta-Llama-3-8B-hf_prompt__new_word_{new_word}/slurm.out"
     for new_word in [" dax", " wug", " blicket"]
 ]
+finetuned_3 = [
+    f"ckpt/meta-word{pretrained_model_option}_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best/{eval_name}/slurm.out"
+    for seed in [0, 1, 2]
+]
+init_name = 'Llama-2 7B'
+c = training_configs[init_name][2]
+pretrained_model = pretrained_models[init_name]
+pretrained_model_option = f"_pretrained_model_{pretrained_model.replace('/', ':')}"
 baseline_2 = [
     f"ckpt/{eval_name}_pretrained_model_Llama-2-7b-hf_prompt__new_word_{new_word}/slurm.out"
     for new_word in [" dax", " wug", " blicket"]
 ]
+finetuned_2 = [
+    f"ckpt/meta-word{pretrained_model_option}_data_dir_{c['data_dir'].replace('/', ':')}_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}/best/{eval_name}/slurm.out"
+    for seed in [0, 1, 2]
+]
 college = [
     f"ckpt/{eval_name}_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college/slurm.out"
-]
-finetuned = [
-    f"ckpt/meta-word{pretrained_model_option}_data_dir_{c['data_dir'].replace('/', ':')}_embedding_init_mean_train_params_new_word_sep_n_examples_{c['n_examples']}_train_max_length_{c['train_max_length']}_batch_size_{c['batch_size']}_lr_{c['lr']}_seed_{seed}_eval_step_1000/best/{eval_name}/slurm.out"
-    for seed in [0, 1, 2]
 ]
 method_name = "Minnow"
 model_filenames = {
     f"{method_name} from scratch on CHILDES": trained_from_scratch_on_childes,
     f"{method_name} from scratch on BabyLM-10M": trained_from_scratch_on_babylm_10m,
-    f"{init_name} baseline": baseline,
-    f"{init_name} +{method_name} on BabyLM-10M": finetuned,
+    f"Llama-3 8B baseline": baseline_3,
+    f"Llama-3 8B +{method_name} on BabyLM-10M": finetuned_3,
     f"Llama-2 7B baseline": baseline_2,
-    f"CoLLEGe": college,
+    f"Llama-2 7B +{method_name} on BabyLM-10M": finetuned_2,
+    f"Llama-2 7B +CoLLEGe": college,
 }
 
 
@@ -157,7 +195,7 @@ def plot_model_results(model_results, split='test', data_kind='diff'):
 
     acc = acc.melt(var_name="Category Pair", value_name="Accuracy", ignore_index=False).reset_index(names="Model")
 
-    plt.figure(figsize=(8, 3))
+    plt.figure(figsize=(8, 3.5))
     sns.barplot(acc, x="Category Pair", y="Accuracy", hue="Model", hue_order=list(model_results.keys()))
     sns.despine()
     plt.legend(fontsize="small")
@@ -174,6 +212,7 @@ if __name__ == "__main__":
         print(f"model: {model_name}")
         results = []
         for filename in filenames:
+            print(f"collecting results from {filename}")
             with open(filename) as file:
                 res = collect_results_from_file(file)
                 results.append(res)

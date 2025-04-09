@@ -141,11 +141,11 @@ def print_statistics(results, id_to_name: Mapping[int, str], judges):
 
 OutFile = namedtuple("OutFile", ["path", "word", "sep"])
 named_files = {
-    "baseline on BabyLM-10M": OutFile(
+    "llama-3 baseline on BabyLM-10M": OutFile(
         Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_5_max_new_tokens_100/slurm.out"),
         " dax", "\n *"
     ),
-    "finetuned on BabyLM-10M": OutFile(
+    "llama-3 finetuned on BabyLM-10M": OutFile(
         Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
@@ -157,15 +157,19 @@ named_files = {
         Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
+    "llama-2 finetuned on BabyLM-10M": OutFile(
+        Path("ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<|new_word|>", "\n<|sep|>"
+    ),
     "college on BabyLM-10M": OutFile(
         Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
         "<nonce>", "\n"
     ),
-    "baseline on Chimera": OutFile(
+    "llama-3 baseline on Chimera": OutFile(
         Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_5_longer/slurm.out"),
         " wug", "\n *"
     ),
-    "finetuned on Chimera": OutFile(
+    "llama-3 finetuned on Chimera": OutFile(
         Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_longer/slurm.out"),
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
@@ -177,15 +181,19 @@ named_files = {
         Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_max_new_tokens_100/slurm.out"),
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
+    "llama-2 finetuned on Chimera": OutFile(
+        Path("ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_0/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_max_new_tokens_100/slurm.out"),
+        "<|new_word|>", "\n<|sep|>"
+    ),
     "college on Chimera": OutFile(
         Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
         "<nonce>", "\n"
     ),
-    "baseline on def_task": OutFile(
+    "llama-3 baseline on def_task": OutFile(
         Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
         " wug", "\n *"
     ),
-    "finetuned on def_task": OutFile(
+    "llama-3 finetuned on def_task": OutFile(
         Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
@@ -196,6 +204,10 @@ named_files = {
     "llama-3-instruct finetuned on def_task": OutFile(
         Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
+    ),
+    "llama-2 finetuned on def_task": OutFile(
+        Path("ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_0/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
+        "<|new_word|>", "\n<|sep|>"
     ),
     "college on def_task": OutFile(
         Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_4_max_new_tokens_100/slurm.out"),
