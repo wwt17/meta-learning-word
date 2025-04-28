@@ -1,6 +1,6 @@
 # Meta-Learning Word
 
-Meta-learning a new word given a few use examples (i.e. sentences illustrating the use of the new word) in context.
+This repository contains the implementation of a research project based on the paper: [Rapid Word Learning Through Meta In-Context Learning](https://arxiv.org/abs/2502.14791). The project focuses on Meta-training for IN-context learNing Of Words (Minnow), which trains language models to generate new examples of a word's usage given a few in-context examples.
 
 ## Environment settings
 
