@@ -9,6 +9,10 @@ This repository contains the implementation of a research project based on the p
 
 ## Build dataset
 
+You can download the meta-learning and language modeling datasets from [here](https://drive.google.com/file/d/1-7nDfNB5xq7JswRc2FhUOwItA8yCS63R/view?usp=sharing).
+
+For other evaluation datasets, please follow the instructions below.
+
 ### Preprocess
 
 Create .txt file(s) containing one sentence per line.
