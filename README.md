@@ -113,6 +113,8 @@ Simply change the config to `runner_config/finetune_config.py`:
 python runner.py --job_name_base meta-word --config runner_config/finetune_config.py --run_name_flag name --submit
 ```
 
+You can download the model finetuned from Llama-3-8B on Hugging Face: `wwtforever/Meta-Llama-3-8B-Minnow-babylm-10m`, and the model finetuned from Llama-3-8B-Instruct on Hugging Face: `wwtforever/Meta-Llama-3-8B-Instruct-Minnow-babylm-10m` (replace the `pretrained_model` argument with these names in the `Llama_finetuned` grid in `runner_config/evaluation_config.py` and check out other arguments for how to run evaluation on these models).
+
 ## Evaluation
 
 Run `evaluation.py`. On a dataset (given by `--data_dir`), it first evaluates the classification accuracies (the number(s) of classes are given by `--eval_n_classes`), then for each word in the dataset it generate the next example (or definition) by greedy decoding, top-p sampling, and beam search. You can use `runner.py` to create and submit Slurm jobs:
