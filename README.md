@@ -9,7 +9,7 @@ This repository contains the implementation of a research project based on the p
 
 ## Build dataset
 
-You can download the meta-learning and language modeling datasets from [here](https://drive.google.com/file/d/1-7nDfNB5xq7JswRc2FhUOwItA8yCS63R/view?usp=sharing).
+You can download the meta-learning and language modeling datasets [here](https://drive.google.com/file/d/1-7nDfNB5xq7JswRc2FhUOwItA8yCS63R/view?usp=sharing).
 
 For other evaluation datasets, please follow the instructions below.
 
@@ -103,6 +103,8 @@ python runner.py --job_name_base meta-word --config runner_config/config.py --ru
 You may read and change the config file as you need.
 
 You may need to change the Slurm script header to fit your environment. Default header file is `runner_config/header.slurm`.
+
+You can download the pretrained checkpoints [here](https://drive.google.com/file/d/1btcqU6oCGXiLOBBzEVx2aUb_Hk3B-EFg/view?usp=sharing).
 
 ## Finetuning pretrained models
 
