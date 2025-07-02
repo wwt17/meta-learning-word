@@ -6,20 +6,73 @@ from pathlib import Path
 import json
 import re
 import numpy as np
+import scipy as sp
 from utils import map_structure
 
 
-def get_stat(*elements):
+opposite_alternative = {
+    'greater': 'less',
+    'less': 'greater',
+    'two-sided': 'two-sided',
+}
+
+def ttest(group0, group1, alternative='two-sided'):
+    if len(group0) == 1:
+        ttest_result = sp.stats.ttest_1samp(
+            group1, group0[0],
+            alternative=opposite_alternative[alternative])
+    elif len(group1) == 1:
+        ttest_result = sp.stats.ttest_1samp(
+            group0, group1[0],
+            alternative=alternative)
+    else:
+        ttest_result = sp.stats.ttest_ind(
+            group0, group1, equal_var=False,
+            alternative=alternative)
+    return ttest_result
+
+
+def tost(group1, group2, margin):
+    """
+    Two One-Sided Tests (TOST) for equivalence
+
+    Tests if |μ1 - μ2| < margin (equivalence)
+
+    Parameters:
+    group1, group2: arrays of sample data
+    margin: equivalence margin (δ)
+    """
+
+    group1 = np.array(group1)
+    group2 = np.array(group2)
+
+    # Test 1: H0: μ1 - μ2 ≤ -margin vs H1: μ1 - μ2 > -margin
+    # Equivalent to testing: group1 > (group2 - margin)
+    group2_adjusted1 = group2 - margin
+    t1 = ttest(group1, group2_adjusted1, alternative='greater')
+
+    # Test 2: H0: μ1 - μ2 ≥ margin vs H1: μ1 - μ2 < margin  
+    # Equivalent to testing: group1 < (group2 + margin)
+    group2_adjusted2 = group2 + margin
+    t2 = ttest(group1, group2_adjusted2, alternative='less')
+
+    # Overall TOST result
+    # Both tests must reject H0 for equivalence
+    p_tost = max(t1.pvalue, t2.pvalue)  # Conservative approach
+    return p_tost
+
+
+def get_collection(*elements):
     if isinstance(elements[0], (int, float)):
-        return np.mean(elements), np.std(elements), len(elements)
+        return elements
     elif all(e == elements[0] for e in elements):
         return elements[0]
     else:
         return None
 
 
-def mean_std_repr(mean_std, prec=1):
-    mean, std, n = mean_std
+def mean_std_repr(elements, prec=1):
+    mean, std, n = np.mean(elements), np.std(elements), len(elements)
     return f"{mean:.{prec}%}({std:.{prec}%};{n})"
 
 
@@ -148,11 +201,47 @@ else:
     for name, result in results.items():
         agg_results[re.sub(r'_seed_\d+', r'', name)].append(result)
     agg_results = {
-        name: map_structure(get_stat, *rlist, classinfo=(int, float, str))
+        name: map_structure(get_collection, *rlist, classinfo=(int, float, str))
         for name, rlist in agg_results.items()
     }
-    for name, result in agg_results.items():
-        assert isinstance(result, dict)
+
+    def get_scores(result):
         rougeL = result['greedy outputs'][0]['rouge']['rougeL']
         bertscore_f1 = result['greedy outputs'][0]['bertscore']['f1']
-        print(f'{name}: {mean_std_repr(bertscore_f1)} {mean_std_repr(rougeL)}')
+        return bertscore_f1, rougeL
+
+    name_max_length = max(map(len, agg_results.keys()))
+    for name, result in agg_results.items():
+        assert isinstance(result, dict)
+        scores = get_scores(result)
+        print(f'{name:{name_max_length}}: {" ".join(map(mean_std_repr, scores))}')
+    
+    comparisons = [
+        ('Llama-3-8B', 'Llama-3-8B-finetuned'),
+        ('Llama-3-8B-Instruct', 'Llama-3-8B-Instruct-finetuned'),
+        ('Llama-2-7B', 'Llama-2-7B-finetuned'),
+        ('Llama-3-8B-finetuned', 'Llama-3-8B-Instruct-finetuned'),
+        ('CoLLEGe', 'Llama-2-7B-finetuned'),
+        ('Llama-3-8B-Instruct-finetuned', 'FLAN-XL-DefInstr'),
+    ]
+    alternative = 'less'
+    margin = 0.005
+    print(f'Comparing the latter to the former. {alternative=}')
+    for n_shot in [1]:
+        for comparison_prefixes in comparisons:
+            assert len(comparison_prefixes) == 2
+            comparison_names = tuple((prefix+f"-{n_shot}-shot" for prefix in comparison_prefixes))
+            comparison_scores = tuple((get_scores(agg_results[name]) for name in comparison_names))
+            print("Comparing:")
+            for name, scores in zip(comparison_names, comparison_scores):
+                print(f'{name:{name_max_length}}: {" ".join(map(mean_std_repr, scores))}')
+            pvalues = []
+            for score_pair in zip(*comparison_scores):
+                ttest_result = ttest(*score_pair, alternative=alternative)
+                pvalues.append(ttest_result.pvalue)
+            print(f'{"pvalue":{name_max_length}}: {" ".join(f"{pvalue:.7e}" for pvalue in pvalues)}')
+            tost_pvalues = []
+            for score_pair in zip(*comparison_scores):
+                p_tost = tost(*score_pair, margin=margin)
+                tost_pvalues.append(p_tost)
+            print(f'{"tost pvalue":{name_max_length}}: {" ".join(f"{pvalue:.7e}" for pvalue in tost_pvalues)}')
