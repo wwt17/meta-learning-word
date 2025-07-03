@@ -102,7 +102,7 @@ def get_case_name(winner_id: int, id_to_name: Mapping[int, str]):
         return "tie"
 
 
-def print_statistics(results, id_to_name: Mapping[int, str], judges):
+def print_statistics(results, id_to_name: Mapping[int, str], judges, print_agreements=False):
     for judge in judges:
         print(f"{judge}:")
         for output_field in used_output_fields:
@@ -118,109 +118,124 @@ def print_statistics(results, id_to_name: Mapping[int, str], judges):
             for case, count in zip(cases, counts):
                 case_name = get_case_name(case, id_to_name)
                 print(f"Case {case_name}: {frac_repr(count, len(winner_ids))}")
-    for judge_pair in combinations(judges, 2):
-        cnt_eq, cnt_oppo, tot = 0, 0, 0
-        cnt_table = np.zeros((3, 3), dtype=int)
-        for example_results in results:
-            for output_field in used_output_fields:
-                for winner_ids in example_results[output_field]:
-                    try:
-                        winner_id_pair = tuple((winner_ids[judge] for judge in judge_pair))
-                    except KeyError:
-                        continue
-                    tot += 1
-                    cnt_eq += winner_id_pair[0] == winner_id_pair[1]
-                    cnt_oppo += winner_id_pair[0] >= 0 and winner_id_pair[1] >= 0 and winner_id_pair[0] != winner_id_pair[1]
-                    cnt_table[winner_id_pair[0], winner_id_pair[1]] += 1
-        print(f"{judge_pair[0]} and {judge_pair[1]} agree on {frac_repr(cnt_eq, tot)} judgments and have {frac_repr(cnt_oppo, tot)} opposite judgments")
-        print("table:")
-        for x in [0, 1, -1]:
-            for y in [0, 1, -1]:
-                print(frac_repr(cnt_table[x, y], tot), end=('\n' if y == -1 else ' '))
+
+    if print_agreements:
+        for judge_pair in combinations(judges, 2):
+            cnt_eq, cnt_oppo, tot = 0, 0, 0
+            cnt_table = np.zeros((3, 3), dtype=int)
+            for example_results in results:
+                for output_field in used_output_fields:
+                    for winner_ids in example_results[output_field]:
+                        try:
+                            winner_id_pair = tuple((winner_ids[judge] for judge in judge_pair))
+                        except KeyError:
+                            continue
+                        tot += 1
+                        cnt_eq += winner_id_pair[0] == winner_id_pair[1]
+                        cnt_oppo += winner_id_pair[0] >= 0 and winner_id_pair[1] >= 0 and winner_id_pair[0] != winner_id_pair[1]
+                        cnt_table[winner_id_pair[0], winner_id_pair[1]] += 1
+            print(f"{judge_pair[0]} and {judge_pair[1]} agree on {frac_repr(cnt_eq, tot)} judgments and have {frac_repr(cnt_oppo, tot)} opposite judgments")
+            print("table:")
+            for x in [0, 1, -1]:
+                for y in [0, 1, -1]:
+                    print(frac_repr(cnt_table[x, y], tot), end=('\n' if y == -1 else ' '))
 
 
-OutFile = namedtuple("OutFile", ["path", "word", "sep"])
-named_files = {
-    "llama-3 baseline on BabyLM-10M": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_5_max_new_tokens_100/slurm.out"),
-        " dax", "\n *"
-    ),
-    "llama-3 finetuned on BabyLM-10M": OutFile(
-        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
+_OutFile = namedtuple("OutFile", ["path", "word", "sep"])
+
+class OutFile(_OutFile):
+    def __truediv__(self, other):
+        return OutFile(self.path / other, self.word, self.sep)
+
+finetuned_paths = {
+    "llama-3": OutFile(
+        "ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_{seed}_eval_step_1000/best/",
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
-    "llama-3-instruct baseline on BabyLM-10M": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_n_examples_5_max_new_tokens_100/slurm.out"),
-        " dax", "\n *"
-    ),
-    "llama-3-instruct finetuned on BabyLM-10M": OutFile(
-        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
+    "llama-3-instruct": OutFile(
+        "ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_{seed}_eval_step_1000/best/",
         "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
     ),
-    "llama-2 finetuned on BabyLM-10M": OutFile(
-        Path("ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_0/best/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/slurm.out"),
+    "llama-2": OutFile(
+        "ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_{seed}/best/",
         "<|new_word|>", "\n<|sep|>"
-    ),
-    "college on BabyLM-10M": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
-        "<nonce>", "\n"
-    ),
-    "llama-3 baseline on Chimera": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_5_longer/slurm.out"),
-        " wug", "\n *"
-    ),
-    "llama-3 finetuned on Chimera": OutFile(
-        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_longer/slurm.out"),
-        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
-    ),
-    "llama-3-instruct baseline on Chimera": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_n_examples_5/slurm.out"),
-        " wug", "\n *"
-    ),
-    "llama-3-instruct finetuned on Chimera": OutFile(
-        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_max_new_tokens_100/slurm.out"),
-        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
-    ),
-    "llama-2 finetuned on Chimera": OutFile(
-        Path("ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_0/best/meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_max_new_tokens_100/slurm.out"),
-        "<|new_word|>", "\n<|sep|>"
-    ),
-    "college on Chimera": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
-        "<nonce>", "\n"
-    ),
-    "llama-3 baseline on def_task": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
-        " wug", "\n *"
-    ),
-    "llama-3 finetuned on def_task": OutFile(
-        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
-        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
-    ),
-    "llama-3-instruct baseline on def_task": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
-        " wug", "\n *"
-    ),
-    "llama-3-instruct finetuned on def_task": OutFile(
-        Path("ckpt/meta-word_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_data_dir_word_use_data:babylm_data:babylm_10M:word_embedding_init_mean_prompt__train_params_new_word_sep_n_examples_5_train_max_length_160_batch_size_16_lr_0.001_seed_0_eval_step_1000/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
-        "<|reserved_special_token_0|>", "\n<|reserved_special_token_1|>"
-    ),
-    "llama-2 finetuned on def_task": OutFile(
-        Path("ckpt/meta-word_pretrained_model_Llama-2-7b-hf_data_dir_word_use_data:babylm_data:babylm_10M:word_n_examples_5_train_max_length_160_batch_size_16_lr_0.003_seed_0/best/meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/slurm.out"),
-        "<|new_word|>", "\n<|sep|>"
-    ),
-    "college on def_task": OutFile(
-        Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_4_max_new_tokens_100/slurm.out"),
-        "<nonce>", "\n"
     ),
 }
+
+eval_paths = {
+    "babylm": Path("meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_n_examples_5_max_new_tokens_100/"),
+    "chimera": Path("meta-word-eval_data_dir_chimeras.json_data_order_original_n_examples_5_max_new_tokens_100/"),
+    "def_task": Path("meta-word-eval_data_dir_def_task.json_n_examples_4_max_new_tokens_100/")
+}
+
+named_files = {eval_name: {} for eval_name in eval_paths}
+
+for finetuned_name_, finetuned_path_ in finetuned_paths.items():
+    for seed in range(3):
+        finetuned_name = finetuned_name_ + f" seed {seed}"
+        finetuned_path = OutFile(
+            Path(finetuned_path_.path.format(seed=seed)),
+            finetuned_path_.word, finetuned_path_.sep)
+        for eval_name, eval_path in eval_paths.items():
+            named_files[eval_name][finetuned_name] = finetuned_path/eval_path/"slurm.out"
+
+# eval on babylm
+named_files["babylm"]["llama-3 baseline"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_n_examples_5_max_new_tokens_100/slurm.out"),
+    " dax", "\n *"
+)
+named_files["babylm"]["llama-3-instruct baseline"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_n_examples_5_max_new_tokens_100/slurm.out"),
+    " dax", "\n *"
+)
+named_files["babylm"]["college"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_word_use_data:babylm_data:babylm_10M:word_split_test_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
+    "<nonce>", "\n"
+)
+
+# eval on chimera
+named_files["chimera"]["llama-3 baseline"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_5_longer/slurm.out"),
+    " wug", "\n *"
+)
+named_files["chimera"]["llama-3-instruct baseline"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_n_examples_5/slurm.out"),
+    " wug", "\n *"
+)
+named_files["chimera"]["college"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_chimeras.json_data_order_original_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_5_max_new_tokens_100/slurm.out"),
+    "<nonce>", "\n"
+)
+
+# eval on def_task
+named_files["def_task"]["llama-3 baseline"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
+    " wug", "\n *"
+)
+named_files["def_task"]["llama-3-instruct baseline"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_:scratch:ww2135:Meta-Llama-3-8B-Instruct_prompt__n_examples_4_max_new_tokens_100/slurm.out"),
+    " wug", "\n *"
+)
+named_files["def_task"]["college"] = OutFile(
+    Path("ckpt/meta-word-eval_data_dir_def_task.json_pretrained_model_Llama-2-7b-hf_emb_gen_model_type_college_n_examples_4_max_new_tokens_100/slurm.out"),
+    "<nonce>", "\n"
+)
+
+for eval_name, named_files_ in named_files.items():
+    for name, file in named_files_.items():
+        if not file.path.exists():
+            print(f"Not Exist: {eval_name} {name} {file.path}")
 
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
+        "eval_name", choices=list(named_files.keys()),
+        help="Evaluation on which dataset."
+    )
+    argparser.add_argument(
         "names", nargs=2,
-        help="Names for the 2 files for comparison."
+        help="Names for the 2 models for comparison."
     )
     argparser.add_argument(
         "--word_example_prompt_name",
@@ -269,6 +284,7 @@ if __name__ == "__main__":
         help="Pause after each judgment, example, or none."
     )
     args = argparser.parse_args()
+    named_files = named_files[args.eval_name]
 
     rng = np.random.default_rng(args.seed)
 
