@@ -507,6 +507,7 @@ if __name__ == "__main__":
         "causal": AutoModelForCausalLM,
         "seq2seq": AutoModelForSeq2SeqLM,
     }
+    exception = None
     for model_type, auto_model_cls in auto_model_cls_mapping.items():
         try:
             model = auto_model_cls.from_pretrained(
@@ -514,12 +515,13 @@ if __name__ == "__main__":
                 revision=args.revision,
                 device_map=device,
             )
-        except ValueError as exception:
-            pass
+        except ValueError as e:
+            exception = e
         else:
             break
     else:
-        raise exception  # type: ignore
+        if exception:
+            raise exception  # type: ignore
 
     if args.emb_gen_model_type is None:
         emb_gener = None
