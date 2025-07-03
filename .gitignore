@@ -9,3 +9,4 @@ __pycache__/
 /*.png
 /babylm_data
 /childes*
+/compare_gens_res
